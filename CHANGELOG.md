@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-22 (novena tanda)
+
+- Adaptador OpenAI-compatible para NVIDIA NIM y Google Gemini: `api_prepare()`
+  traduce rutas/cuerpos, `api_stream()` lee SSE y las respuestas se normalizan a
+  forma Ollama. `OLLAMA_KIT_PROVIDER` selecciona proveedor; `OLLAMA_HOST`
+  explícito sigue teniendo prioridad.
+- Nuevos prefijos `onvidia` y `ogemini` (keys en `~/.nvidia-api-key` y
+  `~/.gemini-api-key`, chmod 600, ignoradas por git y backups), con
+  autocompletado. `ocli` continúa local por defecto.
+- NVIDIA envía `reasoning_effort` y bloquea `/embeddings` y JSON Schema; Gemini
+  admite `response_format` y embeddings. `act`/`code` usan `NO_SCHEMA` según el
+  proveedor, y `list`/`show`/`stop` distinguen local y remoto.
+- `config` muestra PROVEEDOR, MODO, HOST y estado de la key. Manual, README,
+  INSTALL y `.gitignore` actualizados. Verificación con `urlopen` simulado: no
+  se gastaron créditos.
+
 ## 2026-11-22 (octava tanda)
 
 - Soporte de API key directa para modelos cloud: `OLLAMA_API_KEY` añade el

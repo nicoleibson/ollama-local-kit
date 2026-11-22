@@ -24,6 +24,8 @@ Backups.Ollama/
 .env.*
 *.local
 .ollama-cloud-key
+.nvidia-api-key
+.gemini-api-key
 
 # Editor / sistema
 .vscode/

@@ -78,6 +78,8 @@ ocode tests archivo.py                        # tests unitarios con JSON Schema
 odebug -n 5                                   # últimos errores y eventos
 ocloud list                                   # modelos cloud (necesita API key)
 ocloud chat -m glm-5.3 "revisa este diff"     # nube bajo demanda
+onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
+ogemini chat -m gemini-4-hydrogen "explica esto"
 ochat --session proyecto "hola"               # conversación persistente
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
@@ -120,7 +122,14 @@ Los comandos de `act` muestran `[->]`, duración y `[OK]`/`[X] exit N`. Todo que
 override con `OLLAMA_NO_CLOUD=true` no se toca. Los modelos cloud no soportan
 JSON Schema: ahí `act` está bloqueado y `code` requiere `--no-schema`. Para
 desarrollar, `glm-5.3` y `kimi-k2.7-code` son la referencia; baja el resultado a
-prompts y RAG locales para iterar sin coste. Ver manual, sección 11.
+prompts y RAG locales para iterar sin coste.
+
+También hay adaptadores para **NVIDIA NIM** (`onvidia`, key en
+`~/.nvidia-api-key`) y **Google Gemini** (`ogemini`, key en
+`~/.gemini-api-key`), ambos OpenAI-compatible. NVIDIA controla el razonamiento
+con `reasoning_effort` pero no ofrece JSON Schema ni embeddings en esa API;
+Gemini sí admite ambos, aunque su thinking no se puede desactivar. `ocli` sigue
+siendo local por defecto. Ver manual, sección 11.
 
 ## Seguridad
 

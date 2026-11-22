@@ -216,6 +216,17 @@ ocloud list                                   # catálogo cloud
 # ocloud chat -m glm-5.3 "hola"               # consume créditos
 ```
 
+También puedes añadir proveedores OpenAI-compatible con sus propias keys:
+
+```bash
+printf 'TU_KEY_DE_NVIDIA' > ~/.nvidia-api-key; chmod 600 ~/.nvidia-api-key
+printf 'TU_KEY_DE_GEMINI' > ~/.gemini-api-key; chmod 600 ~/.gemini-api-key
+onvidia config                                # PROVEEDOR: nvidia
+ogemini config                                # PROVEEDOR: gemini
+# onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "hola"   # consume créditos
+# ogemini chat -m gemini-4-hydrogen "hola"                   # consume créditos
+```
+
 `ocli doctor` debe terminar con **TODO CORRECTO**. El único aviso habitual es
 "ningún modelo cargado" cuando no hay ninguna inferencia en curso.
 
@@ -237,7 +248,7 @@ rm -f ~/ollama-cli.py ~/ollama-bench.sh ~/ollama-act.py \
       ~/ollama-commands.json ~/ollama-kit.md
 rm -rf ~/ollama-scripts ~/.ollama-rag ~/.ollama-sessions
 rm -f ~/.ollama-prompts.json ~/.ollama-bench-history.jsonl ~/.ollama-debug.log
-rm -f ~/.ollama-cloud-key
+rm -f ~/.ollama-cloud-key ~/.nvidia-api-key ~/.gemini-api-key
 ```
 
 Después elimina el bloque `>>> ollama-cli personal >>>` de `~/.bashrc` y recarga la

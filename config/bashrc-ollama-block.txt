@@ -19,6 +19,26 @@ ocloud() {
     OLLAMA_API_KEY="$(cat "$HOME/.ollama-cloud-key")" \
         $HOME/ollama-cli.py "$@"
 }
+onvidia() {
+    if [ ! -s "$HOME/.nvidia-api-key" ]; then
+        echo "Falta ~/.nvidia-api-key con tu API key de NVIDIA NIM" >&2
+        return 1
+    fi
+    OLLAMA_HOST= \
+    OLLAMA_KIT_PROVIDER=nvidia \
+    NVIDIA_API_KEY="$(cat "$HOME/.nvidia-api-key")" \
+        $HOME/ollama-cli.py "$@"
+}
+ogemini() {
+    if [ ! -s "$HOME/.gemini-api-key" ]; then
+        echo "Falta ~/.gemini-api-key con tu API key de Gemini" >&2
+        return 1
+    fi
+    OLLAMA_HOST= \
+    OLLAMA_KIT_PROVIDER=gemini \
+    GEMINI_API_KEY="$(cat "$HOME/.gemini-api-key")" \
+        $HOME/ollama-cli.py "$@"
+}
 # >>> ollama-cli completion >>>
 if [[ -r "$HOME/.local/share/bash-completion/completions/ollama-cli" ]]; then
     source "$HOME/.local/share/bash-completion/completions/ollama-cli"

@@ -20,26 +20,136 @@ import urllib.request
 from pathlib import Path
 
 CLOUD_HOST = "https://ollama.com"
-API_KEY = os.environ.get("OLLAMA_API_KEY", "").strip()
-# Con OLLAMA_HOST explícito manda ese valor; si solo hay API key, se usa ollama.com.
-HOST = os.environ.get("OLLAMA_HOST") or (CLOUD_HOST if API_KEY else "http://127.0.0.1:11434")
+LOCAL_HOST = "http://127.0.0.1:11434"
+PROVIDER = os.environ.get("OLLAMA_KIT_PROVIDER", "ollama").strip().lower()
+if PROVIDER not in ("ollama", "nvidia", "gemini"):
+    PROVIDER = "ollama"
+
+PROVIDER_KEYVARS = {
+    "ollama": "OLLAMA_API_KEY",
+    "nvidia": "NVIDIA_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+PROVIDER_KEYFILES = {
+    "ollama": Path.home() / ".ollama-cloud-key",
+    "nvidia": Path.home() / ".nvidia-api-key",
+    "gemini": Path.home() / ".gemini-api-key",
+}
+PROVIDER_BASES = {
+    "ollama": CLOUD_HOST,
+    "nvidia": "https://integrate.api.nvidia.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+}
+
+
+def provider_key():
+    value = os.environ.get(PROVIDER_KEYVARS[PROVIDER], "").strip()
+    if value:
+        return value
+    try:
+        return PROVIDER_KEYFILES[PROVIDER].read_text().strip()
+    except OSError:
+        return ""
+
+
+API_KEY = provider_key()
+# OLLAMA_HOST explícito manda; si no, cada proveedor tiene su base por defecto.
+if PROVIDER == "ollama":
+    HOST = os.environ.get("OLLAMA_HOST") or (CLOUD_HOST if API_KEY else LOCAL_HOST)
+else:
+    HOST = os.environ.get("OLLAMA_HOST") or PROVIDER_BASES[PROVIDER]
 HOST = HOST.rstrip("/")
 CLOUD_MODE = "ollama.com" in HOST
+EXTERNAL = PROVIDER != "ollama" or CLOUD_MODE
+# Gemini admite JSON Schema; Ollama Cloud y NIM (según su schema) no.
+NO_SCHEMA = EXTERNAL and not (PROVIDER == "gemini" and not CLOUD_MODE)
+
+
+def provider_alias():
+    if PROVIDER == "ollama":
+        return "ocloud" if CLOUD_MODE else "ocli"
+    return f"o{PROVIDER}"
+
+
+OPENAI_PATHS = {
+    "/api/chat": "/chat/completions",
+    "/api/generate": "/chat/completions",
+    "/api/embed": "/embeddings",
+    "/api/tags": "/models",
+    "/api/ps": "/models",
+}
 
 
 def api_headers():
     headers = {"Content-Type": "application/json"}
-    if CLOUD_MODE and API_KEY:
+    if API_KEY and EXTERNAL:
         headers["Authorization"] = f"Bearer {API_KEY}"
     return headers
 
 
 def http_detail(code, body):
     detail = body[:300]
-    if CLOUD_MODE and code in (401, 402, 403, 429):
-        detail += (" | Revisa OLLAMA_API_KEY y el plan/créditos en "
-                   "https://ollama.com/settings/keys")
+    if EXTERNAL and code in (401, 402, 403, 429):
+        detail += (f" | Revisa {PROVIDER_KEYVARS[PROVIDER]} y el plan/créditos "
+                   "del proveedor")
     return detail
+
+
+def openai_payload(path, payload):
+    """Convierte un payload Ollama al formato chat/completions o embeddings."""
+    payload = payload or {}
+    if path in ("/api/chat", "/api/generate"):
+        opts = payload.get("options", {})
+        messages = payload.get("messages")
+        if path == "/api/generate":
+            messages = []
+            if payload.get("system"):
+                messages.append({"role": "system", "content": payload["system"]})
+            messages.append({"role": "user", "content": payload.get("prompt", "")})
+        out = {
+            "model": payload.get("model"),
+            "messages": messages,
+            "stream": payload.get("stream", False),
+            "temperature": opts.get("temperature", 0.7),
+            "max_tokens": opts.get("num_predict") or opts.get("max_tokens") or 512,
+        }
+        if PROVIDER == "nvidia":
+            out["reasoning_effort"] = "medium" if payload.get("think", True) else "none"
+        elif PROVIDER == "gemini" and payload.get("format"):
+            out["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "salida", "schema": payload["format"]},
+            }
+        return out
+    if path == "/api/embed":
+        return {"model": payload.get("model"), "input": payload.get("input")}
+    return {}
+
+
+def openai_response(path, data, started):
+    """Devuelve una respuesta con forma Ollama para no tocar los comandos."""
+    elapsed = max(time.time() - started, 1e-6)
+    if path in ("/api/chat", "/api/generate"):
+        choice = (data.get("choices") or [{}])[0]
+        content = (choice.get("message") or {}).get("content", "") or ""
+        usage = data.get("usage") or {}
+        stats = {
+            "eval_count": usage.get("completion_tokens", 0),
+            "prompt_eval_count": usage.get("prompt_tokens", 0),
+            "eval_duration": int(elapsed * 1e9),
+            "done": True,
+        }
+        if path == "/api/generate":
+            return {"response": content, **stats}
+        return {"message": {"content": content}, **stats}
+    if path == "/api/embed":
+        return {"embeddings": [d.get("embedding", []) for d in data.get("data", [])]}
+    if path == "/api/tags":
+        return {"models": [{"name": m.get("id") or m.get("name")}
+                           for m in data.get("data", [])]}
+    if path == "/api/ps":
+        return {"models": []}
+    return data
 OVERRIDE = Path("/etc/systemd/system/ollama.service.d/override.conf")
 MODELS_DIR = Path("/home/onion/Documentos/ModelsIA")
 SESSIONS_DIR = Path.home() / ".ollama-sessions"
@@ -124,12 +234,35 @@ def debug_log(event, **fields):
         print(f"[debug] {event} {detail}", file=sys.stderr)
 
 
+def api_prepare(path, payload):
+    """Prepara (ruta, cuerpo) según el proveedor. Devuelve None si es nativo."""
+    if not (EXTERNAL and path in OPENAI_PATHS):
+        return None
+    if path == "/api/embed" and PROVIDER == "nvidia":
+        raise SystemExit(
+            "NVIDIA NIM no expone /embeddings en esta API. Usa 'ocli' (qwen:gpu) "
+            "u 'ogemini' para indexar con RAG."
+        )
+    body = openai_payload(path, payload)
+    if not API_KEY:
+        raise SystemExit(
+            f"Falta la key de {PROVIDER}: exporta {PROVIDER_KEYVARS[PROVIDER]} o "
+            f"escríbela en {PROVIDER_KEYFILES[PROVIDER]} (chmod 600)."
+        )
+    return OPENAI_PATHS[path], json.dumps(body).encode()
+
+
 def api(path, payload=None, method=None, timeout=300):
-    data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(
-        HOST + path, data=data, method=method, headers=api_headers(),
-    )
     started = time.time()
+    prepared = api_prepare(path, payload)
+    if prepared:
+        req_path, data = prepared
+    else:
+        req_path = path
+        data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(
+        HOST + req_path, data=data, method=method, headers=api_headers(),
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
@@ -142,26 +275,58 @@ def api(path, payload=None, method=None, timeout=300):
     except urllib.error.URLError as e:
         debug_log("api_error", host=HOST, path=path, reason=str(e.reason))
         raise SystemExit(f"No se puede conectar con {HOST}{path}: {e.reason}")
-    debug_log("api", host=HOST, path=path, status=status, bytes=len(raw),
-              seconds=round(time.time() - started, 3))
-    return json.loads(raw) if raw else {}
+    debug_log("api", host=HOST, provider=PROVIDER, path=path, status=status,
+              bytes=len(raw), seconds=round(time.time() - started, 3))
+    parsed = json.loads(raw) if raw else {}
+    return openai_response(path, parsed, started) if prepared else parsed
 
 
 def api_stream(path, payload, timeout=300):
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        HOST + path, data=data, headers=api_headers()
-    )
     started = time.time()
+    prepared = api_prepare(path, payload)
+    if prepared:
+        req_path, data = prepared
+        body = json.loads(data)
+        body["stream"] = True
+        data = json.dumps(body).encode()
+    else:
+        req_path = path
+        data = json.dumps(payload).encode()
+    req = urllib.request.Request(HOST + req_path, data=data, headers=api_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            for line in resp:
-                if not line.strip():
-                    continue
-                chunk = json.loads(line)
-                yield chunk
-                if chunk.get("done"):
-                    break
+            if prepared:
+                total = 0
+                prompt_tokens = 0
+                for line in resp:
+                    text = line.decode(errors="replace").strip()
+                    if not text.startswith("data:"):
+                        continue
+                    raw = text[5:].strip()
+                    if raw == "[DONE]":
+                        break
+                    chunk = json.loads(raw)
+                    choice = (chunk.get("choices") or [{}])[0]
+                    piece = (choice.get("delta") or {}).get("content", "") or ""
+                    usage = chunk.get("usage") or {}
+                    if usage:
+                        total = usage.get("completion_tokens", total)
+                        prompt_tokens = usage.get("prompt_tokens", prompt_tokens)
+                    yield {"message": {"content": piece}}
+                yield {
+                    "done": True,
+                    "eval_count": total,
+                    "prompt_eval_count": prompt_tokens,
+                    "eval_duration": int(max(time.time() - started, 1e-6) * 1e9),
+                }
+            else:
+                for line in resp:
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    yield chunk
+                    if chunk.get("done"):
+                        break
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         debug_log("api_error", host=HOST, path=path, code=e.code, body=body[:800])
@@ -169,8 +334,8 @@ def api_stream(path, payload, timeout=300):
     except urllib.error.URLError as e:
         debug_log("api_error", host=HOST, path=path, reason=str(e.reason))
         raise SystemExit(f"No se puede conectar con {HOST}{path}: {e.reason}")
-    debug_log("api", host=HOST, path=path, status=200, stream=True,
-              seconds=round(time.time() - started, 3))
+    debug_log("api", host=HOST, provider=PROVIDER, path=path, status=200,
+              stream=True, seconds=round(time.time() - started, 3))
 
 
 def sh(cmd, timeout=20):
@@ -490,10 +655,10 @@ def act_is_dangerous(command):
 
 
 def cmd_act(args):
-    if CLOUD_MODE:
+    if NO_SCHEMA:
         raise SystemExit(
-            "act usa JSON Schema y los modelos cloud no lo soportan. "
-            "Usa 'ocli act ...' (local) o 'ocloud chat ...'."
+            f"act usa JSON Schema y {PROVIDER} no lo soporta aquí. "
+            "Usa 'ocli act ...' (local) o el modo chat del proveedor."
         )
     catalog = load_catalog(args.catalog)
     if args.list:
@@ -804,6 +969,22 @@ def cmd_doctor(args):
 
 
 def cmd_list(args):
+    if EXTERNAL:
+        try:
+            models = api("/api/tags").get("models", [])
+        except SystemExit:
+            print(f"No se pudo consultar el catálogo de {PROVIDER}.")
+            return
+        if not models:
+            print(f"No hay modelos visibles en {PROVIDER}.")
+            return
+        print(f"{'MODELO':<48} PROVEEDOR")
+        print("-" * 62)
+        for m in models:
+            name = m.get("name", "")
+            if name:
+                print(f"{name:<48} {PROVIDER}")
+        return
     out = sh("ollama list 2>/dev/null")
     lines = out.splitlines()
     if not lines:
@@ -821,10 +1002,18 @@ def cmd_list(args):
 
 
 def cmd_show(args):
+    if EXTERNAL:
+        raise SystemExit(
+            f"'show' solo consulta el Ollama local. Usa '{provider_alias()} list' "
+            f"para ver los modelos de {PROVIDER}."
+        )
     print(sh(f"ollama show {args.model} 2>&1"))
 
 
 def cmd_stop(args):
+    if EXTERNAL:
+        print("No hay modelos locales que descargar: los remotos se gestionan en el proveedor.")
+        return
     if args.all:
         models = [m.get("name") for m in api("/api/ps").get("models", []) if m.get("name")]
         if not models:
@@ -888,9 +1077,12 @@ def cmd_embed(args):
 
 
 def cmd_config(args):
-    print(f"MODO: {'CLOUD (API key directa)' if CLOUD_MODE else 'LOCAL (Ollama en este equipo)'}")
+    print(f"PROVEEDOR: {PROVIDER}")
+    print(f"MODO: {'EXTERNO (API key directa)' if EXTERNAL else 'LOCAL (Ollama en este equipo)'}")
     print(f"HOST: {HOST}")
-    print(f"API key: {'configurada' if API_KEY else 'no configurada (OLLAMA_API_KEY)'}")
+    print(f"API key: {'configurada' if API_KEY else f'no configurada ({PROVIDER_KEYVARS[PROVIDER]})'}")
+    if EXTERNAL:
+        print(f"Archivo de key: {PROVIDER_KEYFILES[PROVIDER]}")
     print(f"Overrides: {OVERRIDE}")
     print(f"Carpeta GGUF: {MODELS_DIR}")
     print("\nVariables activas:")
@@ -912,11 +1104,15 @@ def cmd_config(args):
     print("  odgpu  -> ollama-scripts/gemma4-dgpu.sh (R7 260X aislada)")
     print("  ocode  -> ollama-cli.py code")
     print("  odebug -> ollama-cli.py debug")
-    print("  ocloud -> ollama-cli.py contra ollama.com (lee ~/.ollama-cloud-key)")
-    if CLOUD_MODE:
-        print("\nNota: ocloud habla con la API de ollama.com; no toca el override local.")
-        print("Los modelos cloud no soportan structured outputs: act no está disponible")
-        print("y code necesita --no-schema.")
+    print("  ocloud  -> ollama-cli.py contra ollama.com (lee ~/.ollama-cloud-key)")
+    print("  onvidia -> ollama-cli.py contra NVIDIA NIM (lee ~/.nvidia-api-key)")
+    print("  ogemini -> ollama-cli.py contra Gemini (lee ~/.gemini-api-key)")
+    if EXTERNAL:
+        print(f"\nNota: {PROVIDER} habla con la API remota; no toca el override local.")
+        if NO_SCHEMA:
+            print(" act no está disponible y code exige --no-schema (sin JSON Schema).")
+        else:
+            print(" JSON Schema disponible: act y code funcionan con este proveedor.")
 
 
 # ---------------------------------------------------------------------------
@@ -1644,9 +1840,9 @@ CODE_ACTIONS = {
 
 
 def cmd_code(args):
-    if CLOUD_MODE and not args.no_schema:
+    if NO_SCHEMA and not args.no_schema:
         raise SystemExit(
-            "Los modelos cloud no soportan JSON Schema. Añade --no-schema "
+            f"{PROVIDER} no soporta JSON Schema en esta ruta. Añade --no-schema "
             "o usa 'ocode' (local) para salida estructurada."
         )
     info = CODE_ACTIONS[args.action]

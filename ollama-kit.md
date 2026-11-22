@@ -729,6 +729,50 @@ la nube (según Ollama, no se usan para entrenar) y consumen créditos del plan.
 4. **Volver a cloud solo cuando el local se quede corto** por contexto o
    razonamiento. Así el gasto se limita a la fase de diseño.
 
+### Otros proveedores: NVIDIA NIM y Google Gemini
+
+Los modelos de Ollama Cloud no son los únicos que puede usar la CLI. Con una key
+propia se puede hablar con NVIDIA NIM y con Gemini mediante un adaptador
+OpenAI-compatible: la CLI sigue enviando comandos Ollama (`/api/chat`,
+`/api/embed`, `/api/tags`) y la capa `api_prepare()` traduce las rutas y los
+cuerpos, y `api_stream()` convierte el SSE (`data: ...`, `[DONE]`) al NDJSON que
+ya consume `cmd_chat`. El resultado se normaliza a forma Ollama para no
+reescribir los comandos.
+
+```bash
+printf 'TU_KEY_DE_NVIDIA' > ~/.nvidia-api-key; chmod 600 ~/.nvidia-api-key
+printf 'TU_KEY_DE_GEMINI' > ~/.gemini-api-key; chmod 600 ~/.gemini-api-key
+
+onvidia config                                       # PROVEEDOR: nvidia
+onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
+ogemini config                                       # PROVEEDOR: gemini
+ogemini chat -m gemini-4-hydrogen "explica esto"
+ocli chat -m nemotron3:gpu "hola"                    # vuelves al local
+```
+
+| | NVIDIA NIM | Google Gemini |
+|---|---|---|
+| Base | `https://integrate.api.nvidia.com/v1` | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| Variable / archivo | `NVIDIA_API_KEY` / `~/.nvidia-api-key` | `GEMINI_API_KEY` / `~/.gemini-api-key` |
+| Modelo de ejemplo | `nvidia/nemotron-3-ultra-550b-a55b` (1M ctx) | `gemini-4-hydrogen` |
+| Razonamiento | `reasoning_effort: none\|medium\|high`; `--think` → `medium`, `think:false` → `none` | El thinking de 2.5 Pro/3/4 **no se puede desactivar** |
+| JSON Schema | No aparece en el schema del endpoint: `act` bloqueado y `code` exige `--no-schema` | Sí (`response_format`): `act` y `code` funcionan |
+| Embeddings | No expone `/embeddings` en esa API: la CLI lo bloquea y sugiere `qwen:gpu` u `ogemini` | Sí, `/embeddings` con `gemini-embedding-001` |
+| Listado | `/models` | `/models` |
+
+Detalles operativos:
+
+- `OLLAMA_KIT_PROVIDER=nvidia|gemini|ollama` selecciona el proveedor sin los
+  alias; `OLLAMA_HOST` explícito sigue mandando sobre la base por defecto.
+- `config` muestra PROVEEDOR, MODO, HOST, key y ruta del archivo de key.
+- `list` consulta el catálogo remoto; `show` y `stop` avisan de que solo operan
+  sobre el Ollama local, para no fingir que se descarga un modelo remoto.
+- Las keys van en archivos `chmod 600`, nunca en el repo, los logs ni los
+  backups, y están en `.gitignore`. Los errores 401/402/403/429 añaden pista
+  sobre la key y el plan.
+- No se lanzó ninguna inferencia real con estas keys durante la integración: la
+  verificación usó `urlopen` simulado. Cada llamada real consume créditos.
+
 ---
 
 ## 12. Benchmarks y decisiones ya probadas
