@@ -11,6 +11,12 @@ alias odgpu='$HOME/ollama-scripts/gemma4-dgpu.sh'
 alias ocode='$HOME/ollama-cli.py code'
 alias odebug='$HOME/ollama-cli.py debug'
 alias oagent='$HOME/ollama-cli.py agent'
+ofree() {
+    OLLAMA_KIT_LOCAL=1 \
+    OLLAMA_KIT_PROVIDER=ollama \
+    OLLAMA_HOST= OLLAMA_API_KEY= NVIDIA_API_KEY= GEMINI_API_KEY= \
+        $HOME/ollama-cli.py "$@"
+}
 ocloud() {
     if [ ! -s "$HOME/.ollama-cloud-key" ]; then
         echo "Falta ~/.ollama-cloud-key con tu API key de ollama.com" >&2

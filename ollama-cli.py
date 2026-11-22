@@ -43,13 +43,9 @@ PROVIDER_BASES = {
 
 
 def provider_key():
-    value = os.environ.get(PROVIDER_KEYVARS[PROVIDER], "").strip()
-    if value:
-        return value
-    try:
-        return PROVIDER_KEYFILES[PROVIDER].read_text().strip()
-    except OSError:
-        return ""
+    # Solo la variable de entorno activa el modo remoto. El archivo de key lo
+    # leen los prefijos (ocloud/onvidia/ogemini) y lo exportan aquí.
+    return os.environ.get(PROVIDER_KEYVARS[PROVIDER], "").strip()
 
 
 API_KEY = provider_key()
@@ -63,6 +59,36 @@ CLOUD_MODE = "ollama.com" in HOST
 EXTERNAL = PROVIDER != "ollama" or CLOUD_MODE
 # Gemini admite JSON Schema; Ollama Cloud y NIM (según su schema) no.
 NO_SCHEMA = EXTERNAL and not (PROVIDER == "gemini" and not CLOUD_MODE)
+
+# Modo gratuito explícito: ningún modelo cloud de Ollama es gratis; los modelos
+# locales sí. OLLAMA_KIT_LOCAL=1 fuerza el servidor de esta máquina e ignora keys.
+LOCAL_ONLY = os.environ.get("OLLAMA_KIT_LOCAL", "") == "1"
+FREE_MODEL_MAP = {
+    "glm-5.3-flash": "nemotron3:gpu",
+    "glm-5.3": "nemotron3:gpu",
+    "glm-5.3-flash:latest": "nemotron3:gpu",
+    "kimi-k2.7-code": "nemotron3:gpu",
+    "deepseek-v4.1-flash": "nemotron3:gpu",
+    "deepseek-v4.1-flash:1017": "nemotron3:gpu",
+    "beam": "gemma3:q4",
+    "gemma4:31b": "gemma4:cpu",
+    "gemma4:cloud": "gemma4:cpu",
+    "nemotron-3-super": "nemotron3:gpu",
+    "clef:27b": "gemma3:q4",
+}
+
+
+def free_model(name):
+    return FREE_MODEL_MAP.get(name, name)
+
+
+if LOCAL_ONLY:
+    PROVIDER = "ollama"
+    API_KEY = ""
+    HOST = LOCAL_HOST
+    CLOUD_MODE = False
+    EXTERNAL = False
+    NO_SCHEMA = False
 
 
 def provider_alias():
@@ -89,6 +115,9 @@ def api_headers():
 
 def http_detail(code, body):
     detail = body[:300]
+    if "add usage credits" in body.lower() or "subscribe" in body.lower():
+        detail += (" | Los modelos cloud no son gratis: usa 'ofree' o un modelo "
+                   "local con 'ocli'.")
     if EXTERNAL and code in (401, 402, 403, 429):
         detail += (f" | Revisa {PROVIDER_KEYVARS[PROVIDER]} y el plan/créditos "
                    "del proveedor")
@@ -1080,6 +1109,8 @@ def cmd_embed(args):
 def cmd_config(args):
     print(f"PROVEEDOR: {PROVIDER}")
     print(f"MODO: {'EXTERNO (API key directa)' if EXTERNAL else 'LOCAL (Ollama en este equipo)'}")
+    if LOCAL_ONLY:
+        print("GRATIS: solo modelos locales; se ignoran API keys y HOST remoto.")
     print(f"HOST: {HOST}")
     print(f"API key: {'configurada' if API_KEY else f'no configurada ({PROVIDER_KEYVARS[PROVIDER]})'}")
     if EXTERNAL:
@@ -1109,6 +1140,7 @@ def cmd_config(args):
     print("  onvidia -> ollama-cli.py contra NVIDIA NIM (lee ~/.nvidia-api-key)")
     print("  ogemini -> ollama-cli.py contra Gemini (lee ~/.gemini-api-key)")
     print("  oagent  -> ollama-cli.py agent (REPL con herramientas)")
+    print("  ofree   -> solo modelos locales, sin keys ni créditos")
     if EXTERNAL:
         print(f"\nNota: {PROVIDER} habla con la API remota; no toca el override local.")
         if NO_SCHEMA:
@@ -2369,6 +2401,13 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
     DEBUG = getattr(args, "debug", False) or bool(os.environ.get("OLLAMA_KIT_DEBUG"))
+    if LOCAL_ONLY:
+        for field in ("model", "models", "embed_model"):
+            value = getattr(args, field, None)
+            if isinstance(value, str):
+                setattr(args, field, free_model(value))
+            elif isinstance(value, list):
+                setattr(args, field, [free_model(v) for v in value])
     try:
         args.func(args)
     except SystemExit:

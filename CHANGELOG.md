@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-22 (undécima tanda)
+
+- Modo gratuito `ofree`: `OLLAMA_KIT_LOCAL=1` fuerza el Ollama local, ignora
+  `OLLAMA_API_KEY`/`OLLAMA_HOST`/keys de otros proveedores y traduce nombres
+  cloud a modelos locales (`glm-5.3-flash` → `nemotron3:gpu`, `gemma4:31b` →
+  `gemma4:cpu`, etc.). Añadir alias, autocompletado y `config` → GRATIS.
+- El error de créditos de Ollama Cloud (`Add usage credits or subscribe`) ahora
+  sugiere usar `ofree`. Documentado que ningún modelo cloud es gratis y que
+  "Pay as you go" solo exime de suscripción.
+- Corrección: tener una key guardada en `~/.ollama-cloud-key` ya no cambia el
+  modo por defecto. Solo los prefijos exportan la variable; `ocli` sigue local.
+- Verificado sin red: modo local forzado, sin header Bearer, mapeo de modelos y
+  aviso. Sin créditos gastados.
+
 ## 2026-11-22 (décima tanda)
 
 - Nuevo subcomando `agent` (alias `oagent`): REPL con herramientas `read`,

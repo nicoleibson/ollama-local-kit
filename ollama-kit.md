@@ -753,9 +753,34 @@ logs ni en los backups; `~/.ollama-cloud-key` está en `.gitignore`.
 **Nombres:** en la API directa se usa el nombre real (`gemma4:31b`), no el
 sufijo `:cloud` que se usa desde la app/CLI de Ollama.
 
+El archivo de key **no activa el modo cloud por sí solo**: los prefijos
+`ocloud`/`onvidia`/`ogemini` lo leen y exportan la variable correspondiente.
+Puedes tener la key guardada y `ocli` seguirá yendo al servidor local.
+
 **Límites:** los modelos cloud no soportan structured outputs. `act` está
 bloqueado en modo cloud y `code` exige `--no-schema`. Los prompts se procesan en
 la nube (según Ollama, no se usan para entrenar) y consumen créditos del plan.
+
+**Importante: ningún modelo cloud de Ollama es gratis.** El plan "Pay as you go"
+no tiene suscripción, pero cobra por token y exige créditos; por eso
+`glm-5.3-flash` responde
+`Add usage credits or subscribe and save up to 66%`. Ejecutar modelos en tu
+hardware sí es ilimitado y gratuito. Para no depender de créditos, el kit tiene
+`ofree`:
+
+```bash
+ofree config                                  # GRATIS: ignora keys y HOST remoto
+ofree chat -m glm-5.3-flash "hola"            # usa nemotron3:gpu en local
+ofree agent --root ~/ollama-local-kit         # agente local, sin créditos
+```
+
+`ofree` fuerza `OLLAMA_KIT_LOCAL=1`, borra las variables de key y traduce los
+nombres cloud habituales a modelos locales (`glm-5.3-flash`, `glm-5.3`,
+`kimi-k2.7-code`, `deepseek-v4.1-flash`, `nemotron-3-super` → `nemotron3:gpu`;
+`beam`, `clef:27b` → `gemma3:q4`; `gemma4:31b`/`gemma4:cloud` → `gemma4:cpu`).
+Un modelo que no esté en esa tabla se pasa tal cual, así que conviene usar los
+nombres que muestra `ocli list`. Si una llamada cloud devuelve el error de
+créditos, la CLI añade el aviso de usar `ofree`.
 
 **Modelos cloud para desarrollo** (catálogo consultado el 2026-11-22):
 

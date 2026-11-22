@@ -82,6 +82,7 @@ onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
 ogemini chat -m gemini-4-hydrogen "explica esto"
 oagent                                        # REPL agente con herramientas
 oagent --root ~/ollama-local-kit --session trabajo
+ofree chat -m glm-5.3-flash "hola"            # gratuito: traduce a nemotron3:gpu
 ochat --session proyecto "hola"               # conversación persistente
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
@@ -132,6 +133,11 @@ También hay adaptadores para **NVIDIA NIM** (`onvidia`, key en
 con `reasoning_effort` pero no ofrece JSON Schema ni embeddings en esa API;
 Gemini sí admite ambos, aunque su thinking no se puede desactivar. `ocli` sigue
 siendo local por defecto. Ver manual, sección 11.
+
+Ningún modelo cloud de Ollama es gratis: "Pay as you go" no tiene suscripción,
+pero cobra por token y necesita créditos. Para trabajar sin créditos usa `ofree`:
+fuerza el servidor local, ignora las keys y traduce nombres cloud habituales
+(`glm-5.3-flash` → `nemotron3:gpu`, `gemma4:31b` → `gemma4:cpu`, ...).
 
 ## Modo agente interactivo
 
