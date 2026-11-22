@@ -2,7 +2,8 @@
 
 Kit de terminal para exprimir modelos locales de Ollama en una APU Carrizo usando
 **solo la iGPU**, sin arriesgar la R7 260X dedicada. Incluye CLI, catálogo editable
-de acciones, scripts, benchmarks, monitorización, autocompletado y RAG local.
+de acciones, scripts, benchmarks, monitorización, autocompletado, RAG local y una
+ventana Tkinter (`ogui`) para ver, ejecutar y chatear sin servidor ni navegador.
 
 > Probado el 22/11/2026 con Ollama 0.33.2 + Vulkan (RADV). Documentación completa en
 > [`ollama-kit.md`](ollama-kit.md).
@@ -94,7 +95,14 @@ osess resume proyecto                         # comando de otra sesión
 ochat --auto-session                          # guarda con nombre automático
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
+ogui                                          # ventana local: ver, ejecutar y chatear
 ```
+
+`ogui` abre siete pestañas (Resumen, Modelos, Chat, Sesiones, Flujos, Comandos y
+Registro). Fuerza `OLLAMA_KIT_LOCAL=1`, elimina variables de nube/API key, pide
+confirmación para acciones que escriben o descargan modelos y no lanza ninguna
+inferencia al abrirse. El chat usa `chat --no-stream` en un hilo para no congelar
+la interfaz. Detalles en [`ollama-kit.md`](ollama-kit.md#17-ventana-interactiva-ogui).
 
 Funciones principales de `ollama-cli.py`:
 

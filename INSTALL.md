@@ -16,8 +16,9 @@ todo se escribe con `cp`/`tee` directos.
 ```bash
 mkdir -p ~/ollama-scripts ~/.local/share/bash-completion/completions
 cp ollama-cli.py ollama-bench.sh ollama-act.py ollama-commands.json ollama-kit.md ~/
+cp ollama-kit-gui.py ~/
 cp ollama-scripts/*.sh ~/ollama-scripts/
-chmod +x ~/ollama-cli.py ~/ollama-bench.sh ~/ollama-act.py ~/ollama-scripts/*.sh
+chmod +x ~/ollama-cli.py ~/ollama-kit-gui.py ~/ollama-bench.sh ~/ollama-act.py ~/ollama-scripts/*.sh
 cp completions/ollama-cli ~/.local/share/bash-completion/completions/ollama-cli
 ```
 
@@ -211,6 +212,8 @@ ocli config                                   # debe decir MODO: LOCAL
 oagent --help                                 # debe mostrar el REPL de agente
 ofree config                                  # debe decir GRATIS: solo modelos locales
 oflow --help                                  # debe mostrar map/slide/classify/ask
+python3 -m py_compile ~/ollama-kit-gui.py      # sintaxis de la ventana Tkinter
+ogui                                          # abre la ventana; ciérrala sin ejecutar nada
 ofree flow map /home/onion/ollama-kit.md --prompt 'Resume' --out prueba --limit 1
 cat ~/.ollama-flow/prueba/report.md           # estado en disco, reanudable
 OLLAMA_KIT_PROVIDER=nvidia ollama-cli.py config | grep 'Modelo por defecto'  # opcional

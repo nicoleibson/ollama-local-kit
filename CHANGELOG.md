@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-11-22 (decimosexta tanda)
+
+- Nuevo `ollama-kit-gui.py` (alias `ogui`): ventana Tkinter nativa con siete
+  pestañas —Resumen, Modelos, Chat, Sesiones, Flujos, Comandos y Registro—. No
+  levanta servidor ni navegador y no necesita dependencias nuevas.
+- La GUI fuerza `OLLAMA_KIT_LOCAL=1` en todos los subprocess y elimina
+  `OLLAMA_HOST`, `OLLAMA_API_KEY`, `NVIDIA_API_KEY`, `GEMINI_API_KEY` y
+  `OLLAMA_KIT_PROVIDER`, para que no se usen keys guardadas ni créditos.
+- Permite ver `status`/`doctor`/`config`/`rag list`/`bench --history`/`debug`,
+  ejecutar una lista blanca de comandos de solo lectura del catálogo y chatear
+  con `chat --no-stream` en un hilo, con selector de modelo, sesión opcional,
+  `system` y `stats`.
+- Acciones que escriben o liberan recursos (descargar modelos, borrar sesiones,
+  limpiar el log, ejecutar flujos) muestran el comando exacto y piden
+  confirmación. Al abrir la ventana no se lanza ninguna inferencia.
+- Añadidos alias en `~/.bashrc`, bloque instalable y autocompletado; `ocli config`
+  muestra `ogui`. Documentado en el manual (sección 17), README e INSTALL.
+- Prueba nueva sin inferencias: `/tmp/opencode/test-gui.py` valida entorno, argv,
+  parseo, catálogo seguro e instancia Tkinter oculta. No se lanzaron modelos.
+
 ## 2026-11-22 (decimoquinta tanda)
 
 - `gemma3:gpu` (Q6_K, uncensored) pasa a ser el modelo principal en `chat`/`ask`,

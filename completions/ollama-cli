@@ -1,5 +1,6 @@
 # Autocompletado para ollama-cli.py y sus alias (ocli, ochat, oact, orag,
-# orun, owatch, oprompt, osess, odgpu, ocode, odebug, ocloud, onvidia, ogemini, oagent, ofree, oflow).
+# orun, owatch, oprompt, osess, odgpu, ocode, odebug, ocloud, onvidia, ogemini,
+# oagent, ofree, oflow). ogui se completa como archivo.
 # Se instala desde ~/.bashrc; no necesita bash-completion adicional.
 
 _ollama_cli_models() {
@@ -209,3 +210,4 @@ _ollama_cli_complete() {
 }
 
 complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag orun owatch oprompt osess odgpu ocode odebug ocloud onvidia ogemini oagent ofree oflow
+complete -f ogui

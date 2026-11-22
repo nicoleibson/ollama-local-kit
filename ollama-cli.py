@@ -1239,6 +1239,7 @@ def cmd_config(args):
     print("  oagent  -> ollama-cli.py agent (REPL con herramientas)")
     print("  ofree   -> solo modelos locales, sin keys ni créditos")
     print("  oflow   -> ollama-cli.py flow (contexto corto, estado en disco)")
+    print("  ogui    -> ollama-kit-gui.py (ventana local: ver, ejecutar y chatear)")
     if EXTERNAL:
         print(f"\nNota: {PROVIDER} habla con la API remota; no toca el override local.")
         if NO_SCHEMA:

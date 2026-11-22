@@ -12,6 +12,7 @@ alias ocode='$HOME/ollama-cli.py code'
 alias odebug='$HOME/ollama-cli.py debug'
 alias oagent='$HOME/ollama-cli.py agent'
 alias oflow='$HOME/ollama-cli.py flow'
+alias ogui='$HOME/ollama-kit-gui.py'
 ofree() {
     OLLAMA_KIT_LOCAL=1 \
     OLLAMA_KIT_PROVIDER=ollama \

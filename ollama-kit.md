@@ -79,6 +79,7 @@ osess                      # ollama-cli.py session
 odgpu                      # gemma4-dgpu.sh (R7 260X aislada)
 ocode                      # ollama-cli.py code
 odebug                     # ollama-cli.py debug
+ogui                       # ollama-kit-gui.py (ventana local)
 ```
 
 **Autocompletado con Tab** instalado en
@@ -1075,3 +1076,43 @@ sudo rm /etc/sysctl.d/99-ollama.conf
 sudo systemctl daemon-reload && sudo systemctl restart ollama
 ollama rm gemma3:q4
 ```
+
+---
+
+## 17. Ventana interactiva (`ogui`)
+
+`ogui` abre `ollama-kit-gui.py` con Tkinter nativo: no levanta servidor, no abre
+navegador y no necesita dependencias nuevas. Es un panel para **ver, ejecutar y
+chatear** en modo local.
+
+```bash
+ogui
+```
+
+Pestañas:
+
+| Pestaña | Qué permite |
+|---|---|
+| Resumen | `status`, `doctor`, `config`, `rag list` e historial de `bench` |
+| Modelos | inventario, detalle (`show`), modelos cargados y descarga con confirmación |
+| Chat | selector de modelo local, sesión opcional, `system`, `stats` y `chat --no-stream` en hilo |
+| Sesiones | listado, mensajes, comando de reanudación y borrado con confirmación |
+| Flujos | formulario para `oflow map/slide/classify/ask` y lectura de informes |
+| Comandos | catálogo filtrable; solo entradas de solo lectura y ejecución con confirmación |
+| Registro | `debug -n 20`, debug completo, historial de benchmarks y limpieza con confirmación |
+
+Seguridad de la ventana:
+
+- Todos los subprocess se lanzan con `OLLAMA_KIT_LOCAL=1` y se eliminan
+  `OLLAMA_HOST`, `OLLAMA_API_KEY`, `NVIDIA_API_KEY`, `GEMINI_API_KEY` y
+  `OLLAMA_KIT_PROVIDER`. Aunque haya keys guardadas, la GUI no las exporta.
+- La pestaña Comandos solo muestra una lista blanca de entradas de solo lectura.
+  Quedan fuera benchmarks con inferencia, reindexado RAG, `review`, borrados,
+  `stop` y copias de seguridad.
+- Descargar modelos de memoria, borrar sesiones o limpiar el log pide
+  confirmación y muestra el comando exacto antes de ejecutarlo.
+- Al abrir la ventana no se lanza ningún modelo: solo se consultan inventario,
+  sesiones, flujos y catálogo. El chat y los flujos se ejecutan solo al pulsar
+  su botón, siempre con el modelo local elegido.
+- El archivo es importable para pruebas; `python3 -m py_compile
+  ollama-kit-gui.py` y `/tmp/opencode/test-gui.py` pasan sin inferencias.
