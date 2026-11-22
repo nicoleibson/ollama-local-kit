@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-22 (tercera tanda)
+
+- `chat --session NOMBRE`: conversaciones persistentes en `~/.ollama-sessions/`,
+  con `--new-session` y el subcomando `session list|show|clear`.
+- `prompt`: biblioteca de plantillas en `~/.ollama-prompts.json` con variables
+  `{{1}}`, `{{args}}` y `{{clave}}` (`--var`), acciones `add|show|rm|list|use`.
+- `bench` guarda un registro JSONL en `~/.ollama-bench-history.jsonl` con tok/s y
+  VRAM; `bench --history N` muestra los últimos resultados y `--no-save` lo evita.
+- Alias `oprompt` y `osess`; autocompletado ampliado para los tres comandos.
+- `backup-configs.sh` incluye sesiones, prompts e historial de benchmarks.
+- Manual ampliado con la sección 8 y renumeración de las siguientes.
+
 ## 2026-11-22 (segunda tanda)
 
 - Importado `Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf` como `qwen35:gpu`.

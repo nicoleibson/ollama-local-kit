@@ -16,6 +16,8 @@ orag index /home/onion/ollama-kit.md      # indexar archivos para RAG
 orag ask "cómo funciona el modo act"      # preguntar sobre lo indexado
 orun "muestra la fecha"                   # enrutador: act / rag / chat
 owatch                                    # monitor en vivo
+ochat --session proyecto "hola"           # conversación persistente
+oprompt use resumen "texto a resumir"     # plantilla reutilizable
 ollama ps                                 # comprobar que dice 100% GPU
 ollama stop gemma3:q4                     # liberar memoria al terminar
 ```
@@ -44,6 +46,11 @@ ollama-cli.py rag clear --yes
 ollama-cli.py run "muestra la fecha"             # enrutador automático
 ollama-cli.py run --intent rag "qué dice el manual..."
 ollama-cli.py watch --count 5 --interval 1
+ollama-cli.py chat --session proyecto "hola"     # conversación persistente
+ollama-cli.py session list
+ollama-cli.py prompt add resumen --text 'Resume: {{args}}'
+ollama-cli.py prompt use resumen "texto largo"
+ollama-cli.py bench --history                     # historial de rendimiento
 ollama-cli.py import gemma3:q2 RUTA.gguf    # importar otro GGUF local
 ollama-cli.py show gemma3:q4
 ollama-cli.py stop gemma3:q4
@@ -60,6 +67,8 @@ oact                       # ollama-cli.py act
 orag                       # ollama-cli.py rag
 orun                       # ollama-cli.py run
 owatch                     # ollama-cli.py watch
+oprompt                    # ollama-cli.py prompt
+osess                      # ollama-cli.py session
 ```
 
 **Autocompletado con Tab** instalado en
@@ -429,7 +438,74 @@ CPU consumen. Es solo lectura y usa la API local de Ollama.
 
 ---
 
-## 8. Otras recetas de API
+## 8. Sesiones, prompts e historial de benchmarks
+
+### Conversaciones persistentes
+
+`chat --session NOMBRE` guarda el historial tras cada respuesta, tanto en modo
+interactivo como con una sola pregunta. La siguiente llamada con el mismo nombre
+recupera el contexto; `--new-session` lo descarta y empieza de cero.
+
+```bash
+ochat --session proyecto "responde solo con HOLA"
+ochat --session proyecto "qué palabra dije antes?"   # recupera 2 mensajes
+ocli chat --session proyecto                         # modo interactivo
+ocli chat --session proyecto --new-session "otro tema"
+osess list                                           # sesiones y nº de mensajes
+osess show proyecto                                   # volcar la conversación
+osess clear proyecto                                  # pide confirmación
+osess clear --all --yes                               # borrar todas
+```
+
+Los archivos viven en `~/.ollama-sessions/<nombre>.json` (el nombre se normaliza a
+caracteres alfanuméricos, `-` y `_`). Son pequeños y se incluyen en el backup.
+
+Ojo con el contexto: `num_ctx` sigue siendo 2048. Una sesión muy larga puede
+desbordarlo; la CLI no trunca el historial automáticamente.
+
+### Biblioteca de prompts
+
+`~/.ollama-prompts.json` guarda plantillas con variables `{{1}}`, `{{2}}`, `{{args}}`
+y `{{clave}}`. Se usa con `oprompt` / `ocli prompt`.
+
+```bash
+ocli prompt add resumen --text 'Resume en una frase: {{args}}' --desc 'resumen rápido'
+ocli prompt add saludo --text 'Di hola a {{persona}} y menciona {{1}}'
+ocli prompt list
+ocli prompt show resumen
+oprompt use resumen "texto largo a resumir" --no-stream
+oprompt use saludo "Mundo" --var persona=Nico --no-stream
+ocli prompt rm saludo
+```
+
+| Opción de `prompt use` | Para qué |
+|---|---|
+| `-m, --model` | sustituye el modelo guardado en la plantilla |
+| `--system` | sustituye el mensaje de sistema |
+| `--var CLAVE=VALOR` | rellena `{{clave}}` (se puede repetir) |
+| `--session` | guarda la respuesta en esa sesión |
+| `--no-stream`, `--stats` | igual que en `chat` |
+
+Si queda alguna variable `{{...}}` sin rellenar, la CLI avisa por stderr.
+
+### Historial de benchmarks
+
+Cada `ocli bench` guarda una línea JSON con fecha, modelo, tokens, segundos, tok/s y
+VRAM en `~/.ollama-bench-history.jsonl`.
+
+```bash
+ocli bench                       # guarda el resultado de 3 modelos
+ocli bench --history             # últimos 15 registros
+ocli bench --history 5           # últimos 5
+ocli bench gemma3:q4 --no-save   # medir sin registrar
+```
+
+Es útil para detectar regresiones tras cambiar el gobernador, el drop-in de Ollama
+o los parámetros de un Modelfile.
+
+---
+
+## 9. Otras recetas de API
 
 ```bash
 # Generar texto
@@ -447,7 +523,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 
 ---
 
-## 9. Benchmarks y decisiones ya probadas
+## 10. Benchmarks y decisiones ya probadas
 
 | Configuración | tok/s |
 |---|---:|
@@ -479,7 +555,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 
 ---
 
-## 10. Importar otro GGUF (plantilla)
+## 11. Importar otro GGUF (plantilla)
 
 ```bash
 cat > /home/onion/Documentos/ModelsIA/Modelfile.NOMBRE <<'EOF'
@@ -499,7 +575,7 @@ como experimento documentado, no como modelo de uso diario.
 
 ---
 
-## 11. Solución de problemas
+## 12. Solución de problemas
 
 | Síntoma | Causa / solución |
 |---|---|
@@ -509,12 +585,14 @@ como experimento documentado, no como modelo de uso diario.
 | `powerprofilesctl set performance: invalid choice` | Normal: este sistema solo tiene `power-saver`/`balanced`; usar `cpupower` |
 | `does not support chat` / `generate` con qwen | Es embedding: usar `/api/embed` |
 | El enrutador `run` elige mal | Usar `orun --intent act\|rag\|chat ...` o revisar con `--dry-run` |
+| El chat con `--session` olvida cosas | El historial supera `num_ctx=2048`; usa `--new-session` o conversaciones más cortas |
+| Un prompt no sustituye `{{variable}}` | Pasar `--var clave=valor` o argumentos posicionales; la CLI avisa si quedan variables |
 | Peticiones lentas o coladas | `NUM_PARALLEL=1` y un modelo cargado: enviar de una en una |
 | Poco espacio en `/var` o `/home` | `sudo journalctl --vacuum-size=200M`; revisar `df -h` |
 
 ---
 
-## 12. Mantenimiento y reversión
+## 13. Mantenimiento y reversión
 
 ```bash
 watch -n 2 sensors                 # temperatura, consumo, ventilador

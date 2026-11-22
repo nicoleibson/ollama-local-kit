@@ -5,6 +5,8 @@ alias oact='$HOME/ollama-cli.py act'
 alias orag='$HOME/ollama-cli.py rag'
 alias orun='$HOME/ollama-cli.py run'
 alias owatch='$HOME/ollama-cli.py watch'
+alias oprompt='$HOME/ollama-cli.py prompt'
+alias osess='$HOME/ollama-cli.py session'
 # >>> ollama-cli completion >>>
 if [[ -r "$HOME/.local/share/bash-completion/completions/ollama-cli" ]]; then
     source "$HOME/.local/share/bash-completion/completions/ollama-cli"

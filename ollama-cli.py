@@ -20,6 +20,9 @@ from pathlib import Path
 HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 OVERRIDE = Path("/etc/systemd/system/ollama.service.d/override.conf")
 MODELS_DIR = Path("/home/onion/Documentos/ModelsIA")
+SESSIONS_DIR = Path.home() / ".ollama-sessions"
+PROMPTS_PATH = Path.home() / ".ollama-prompts.json"
+BENCH_HISTORY = Path.home() / ".ollama-bench-history.jsonl"
 
 INFO = {
     "gemma3:q4": ("Gemma 3 1B Q4_K_M", "9,3 tok/s", "chat rápido y acciones"),
@@ -150,10 +153,86 @@ def build_payload(args, prompt, history=None):
     return payload
 
 
+def session_path(name):
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", name or "default").strip("-")[:60]
+    return SESSIONS_DIR / f"{safe or 'default'}.json"
+
+
+def session_load(name):
+    try:
+        data = json.loads(session_path(name).read_text())
+        if isinstance(data, dict) and isinstance(data.get("messages"), list):
+            return data
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {"name": name, "model": None, "messages": []}
+
+
+def session_save(name, model, messages):
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    session_path(name).write_text(json.dumps({
+        "name": name,
+        "model": model,
+        "updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "messages": messages,
+    }, ensure_ascii=False, indent=2))
+
+
+def cmd_session(args):
+    if not SESSIONS_DIR.is_dir():
+        print("No hay sesiones guardadas.")
+        return
+    files = sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if args.action == "list" or not args.name:
+        if not files:
+            print("No hay sesiones guardadas.")
+            return
+        print(f"{'SESIÓN':<20} {'MSGS':>5}  MODELO / ACTUALIZADA")
+        print("-" * 70)
+        for p in files:
+            try:
+                d = json.loads(p.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            msgs = len(d.get("messages", []))
+            print(f"{d.get('name', p.stem):<20} {msgs:>5}  "
+                  f"{d.get('model') or '?'} / {d.get('updated', '?')}")
+        return
+
+    if args.action == "show":
+        data = session_load(args.name)
+        if not data["messages"]:
+            raise SystemExit(f"Sesión no encontrada o vacía: {args.name}")
+        print(f"Sesión: {data['name']}  modelo: {data.get('model') or '?'}  "
+              f"actualizada: {data.get('updated', '?')}")
+        for msg in data["messages"]:
+            print(f"\n[{msg.get('role', '?')}] {msg.get('content', '')}")
+        return
+
+    if args.action == "clear":
+        targets = list(SESSIONS_DIR.glob("*.json")) if args.all else [session_path(args.name)]
+        if not args.yes:
+            n = len(targets)
+            answer = input(f"¿Borrar {n} sesión(es)? [s/N] ").strip().lower()
+            if answer not in ("s", "si", "y", "yes"):
+                print("Cancelado.")
+                return
+        for p in targets:
+            p.unlink(missing_ok=True)
+        print(f"Sesiones borradas: {len(targets)}")
+
+
 def cmd_chat(args):
+    session = getattr(args, "session", None)
+    history = []
+    if session:
+        data = session_load(session)
+        if not getattr(args, "new_session", False):
+            history = data["messages"]
+            if history:
+                print(f"Sesión '{session}': {len(history)} mensajes recuperados.")
     if not args.prompt:
         print("Chat interactivo. 'salir' o Ctrl+C para terminar.\n")
-        history = []
         while True:
             try:
                 user = input("tú> ")
@@ -177,18 +256,23 @@ def cmd_chat(args):
             print()
             history.append({"role": "user", "content": user})
             history.append({"role": "assistant", "content": answer})
+            if session:
+                session_save(session, args.model, history)
         return
 
-    payload = build_payload(args, " ".join(args.prompt))
+    prompt = " ".join(args.prompt)
+    payload = build_payload(args, prompt, history)
     if args.no_stream:
         r = api("/api/chat", payload)
         if r.get("error"):
             raise SystemExit("ERROR: " + str(r["error"]))
-        print(r["message"]["content"])
+        answer = r["message"]["content"]
+        print(answer)
         if args.stats:
             print_stats(r)
     else:
         answer = ""
+        last = {}
         for chunk in api_stream("/api/chat", payload):
             answer += chunk.get("message", {}).get("content", "")
             print(chunk.get("message", {}).get("content", ""), end="", flush=True)
@@ -196,6 +280,100 @@ def cmd_chat(args):
         print()
         if args.stats:
             print_stats(last)
+    if session:
+        history.extend([
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": answer},
+        ])
+        session_save(session, args.model, history)
+
+
+def prompts_load():
+    try:
+        data = json.loads(PROMPTS_PATH.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def prompts_save(data):
+    PROMPTS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def render_prompt(text, positional, variables):
+    out = text
+    for i, value in enumerate(positional, 1):
+        out = out.replace("{{%d}}" % i, value)
+    out = out.replace("{{args}}", " ".join(positional))
+    for key, value in variables.items():
+        out = out.replace("{{%s}}" % key, value)
+    return out
+
+
+def cmd_prompt(args):
+    data = prompts_load()
+
+    if args.action == "list":
+        if not data:
+            print(f"No hay prompts. Crea uno con: ocli prompt add nombre --text '...'")
+            return
+        print(f"{'NOMBRE':<18} MODELO / DESCRIPCIÓN")
+        print("-" * 66)
+        for name, item in sorted(data.items()):
+            print(f"{name:<18} {item.get('model') or 'default'} / {item.get('desc', '')}")
+        return
+
+    if args.action == "add":
+        if not args.name or not args.text:
+            raise SystemExit("Indica nombre y --text. Ej: ocli prompt add resumen --text 'Resume {{args}}'")
+        data[args.name] = {
+            "text": args.text,
+            "desc": args.desc or "",
+            "model": args.model,
+            "system": args.system,
+        }
+        prompts_save(data)
+        print(f"Prompt guardado: {args.name}")
+        return
+
+    if args.action == "show":
+        item = data.get(args.name)
+        if not item:
+            raise SystemExit(f"Prompt no encontrado: {args.name}")
+        print(f"Nombre : {args.name}")
+        print(f"Modelo : {item.get('model') or 'default'}")
+        print(f"Desc   : {item.get('desc', '')}")
+        print("Texto  :\n" + item["text"])
+        return
+
+    if args.action == "rm":
+        if args.name not in data:
+            raise SystemExit(f"Prompt no encontrado: {args.name}")
+        del data[args.name]
+        prompts_save(data)
+        print(f"Prompt borrado: {args.name}")
+        return
+
+    item = data.get(args.name)
+    if not item:
+        raise SystemExit(f"Prompt no encontrado: {args.name}. Usa 'ocli prompt list'.")
+    variables = {}
+    for pair in args.var:
+        if "=" not in pair:
+            raise SystemExit("--var debe ser CLAVE=VALOR")
+        key, value = pair.split("=", 1)
+        variables[key] = value
+    prompt = render_prompt(item["text"], args.prompt_args, variables)
+    if "{{" in prompt:
+        print("Aviso: quedan variables sin sustituir en el prompt.", file=sys.stderr)
+
+    ns = argparse.Namespace(
+        prompt=[prompt], model=args.model or item.get("model") or "gemma3:q4",
+        system=args.system or item.get("system"), temperature=0.3, ctx=2048,
+        max_tokens=512, think=False, no_stream=args.no_stream, stats=args.stats,
+        format=None, session=args.session, new_session=False,
+    )
+    cmd_chat(ns)
 
 
 def print_stats(r):
@@ -341,8 +519,32 @@ def cmd_act(args):
 BENCH_PROMPT = "Explica por qué el cielo es azul"
 
 
+def bench_history_show(limit=15):
+    if not BENCH_HISTORY.exists():
+        print("Sin historial de benchmarks. Ejecuta: ocli bench")
+        return
+    rows = []
+    for line in BENCH_HISTORY.read_text().splitlines():
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    rows = rows[-limit:]
+    print(f"{'FECHA':<17} {'MODELO':<18} {'TOK/S':>7} {'TOKENS':>7} {'VRAM':>7}")
+    print("-" * 62)
+    for r in rows:
+        print(f"{r.get('time', '?'):<17} {r.get('model', '?'):<18} "
+              f"{r.get('tps', 0):>7.2f} {r.get('tokens', 0):>7} "
+              f"{r.get('vram', 0):>6.2f}G")
+    print(f"\n{len(rows)} registro(s) de {BENCH_HISTORY}")
+
+
 def cmd_bench(args):
+    if args.history:
+        bench_history_show(args.history if isinstance(args.history, int) else 15)
+        return
     models = args.models or ["gemma3:q4", "gemma3:gpu", "nemotron3:gpu"]
+    results = []
     print(f"{'MODELO':<18} {'RESULTADO':<36}")
     print("-" * 56)
     for model in models:
@@ -356,13 +558,32 @@ def cmd_bench(args):
         n = r.get("eval_count", 0)
         t = r.get("eval_duration", 0) / 1e9
         print(f"{model:<18} {n} tok / {t:.2f}s = {n/t:.2f} tok/s" if t else f"{model:<18} sin datos")
+        if t:
+            results.append({
+                "time": time.strftime("%Y-%m-%d %H:%M"),
+                "model": model,
+                "tokens": n,
+                "seconds": round(t, 3),
+                "tps": round(n / t, 3),
+                "vram": 0.0,
+            })
     print()
     ps = api("/api/ps").get("models", [])
     if ps:
         for m in ps:
             print(f"Cargado: {m['name']}  {m.get('size_vram',0)/2**30:.2f} GiB en VRAM")
+        vram = {m["name"]: m.get("size_vram", 0) / 2**30 for m in ps}
+        for row in results:
+            row["vram"] = round(vram.get(row["model"], 0.0), 2)
     else:
         print("Ningún modelo cargado actualmente.")
+
+    if results and not args.no_save:
+        BENCH_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        with BENCH_HISTORY.open("a") as fh:
+            for row in results:
+                fh.write(json.dumps(row) + "\n")
+        print("Historial actualizado:", BENCH_HISTORY)
 
 
 def cmd_status(args):
@@ -577,6 +798,8 @@ def cmd_config(args):
     print("  orag   -> ollama-cli.py rag")
     print("  orun   -> ollama-cli.py run")
     print("  owatch -> ollama-cli.py watch")
+    print("  oprompt-> ollama-cli.py prompt")
+    print("  osess  -> ollama-cli.py session")
 
 
 # ---------------------------------------------------------------------------
@@ -1013,6 +1236,11 @@ def build_parser():
   ollama-cli.py run "muestra la fecha"              # enrutador automático
   ollama-cli.py run --intent rag "qué dice el manual del RAG"
   ollama-cli.py watch --count 5 --interval 1        # monitor en vivo
+  ollama-cli.py chat --session proyecto "hola"      # conversación persistente
+  ollama-cli.py session list
+  ollama-cli.py prompt add resumen --text 'Resume {{args}}'
+  ollama-cli.py prompt use resumen "este texto largo"
+  ollama-cli.py bench --history
   ollama-cli.py import gemma3:q2 /home/onion/Documentos/ModelsIA/Gemma-...-Q2_k.gguf
 """,
     )
@@ -1029,7 +1257,32 @@ def build_parser():
     c.add_argument("--no-stream", action="store_true")
     c.add_argument("--stats", action="store_true")
     c.add_argument("--format", help="JSON Schema de salida")
+    c.add_argument("--session", help="guardar/recuperar la conversación con este nombre")
+    c.add_argument("--new-session", action="store_true",
+                   help="empezar la sesión desde cero, borrando la anterior")
     c.set_defaults(func=cmd_chat)
+
+    se = sub.add_parser("session", help="gestionar conversaciones guardadas")
+    se.add_argument("action", choices=["list", "show", "clear"], nargs="?", default="list")
+    se.add_argument("name", nargs="?")
+    se.add_argument("--all", action="store_true", help="borrar todas las sesiones")
+    se.add_argument("--yes", action="store_true", help="no pedir confirmación al borrar")
+    se.set_defaults(func=cmd_session)
+
+    pr = sub.add_parser("prompt", help="biblioteca de prompts reutilizables")
+    pr.add_argument("action", choices=["list", "show", "add", "rm", "use"], nargs="?", default="list")
+    pr.add_argument("name", nargs="?")
+    pr.add_argument("prompt_args", nargs="*", help="valores para {{1}}, {{2}} o {{args}}")
+    pr.add_argument("--text", help="texto del prompt al añadir")
+    pr.add_argument("--desc", default="", help="descripción corta")
+    pr.add_argument("-m", "--model", help="modelo a usar (override)")
+    pr.add_argument("--system", help="mensaje de sistema (override)")
+    pr.add_argument("--var", nargs="*", default=[], metavar="CLAVE=VALOR",
+                    help="sustituir {{clave}} en el texto")
+    pr.add_argument("--session", help="guardar la respuesta en una sesión")
+    pr.add_argument("--no-stream", action="store_true")
+    pr.add_argument("--stats", action="store_true")
+    pr.set_defaults(func=cmd_prompt)
 
     a = sub.add_parser("act", help="ejecutar acción en lenguaje natural")
     a.add_argument("text", nargs="*")
@@ -1061,6 +1314,9 @@ def build_parser():
     b = sub.add_parser("bench", help="medir tokens/s")
     b.add_argument("models", nargs="*")
     b.add_argument("--tokens", type=int, default=30)
+    b.add_argument("--history", nargs="?", const=15, type=int, metavar="N",
+                   help="mostrar los últimos N resultados guardados")
+    b.add_argument("--no-save", action="store_true", help="no añadir estos resultados al historial")
     b.set_defaults(func=cmd_bench)
 
     s = sub.add_parser("status", help="estado de servicio, GPU y sensores")

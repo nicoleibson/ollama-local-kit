@@ -57,17 +57,22 @@ orag index /home/onion/ollama-kit.md
 orag ask "cómo funciona el modo act" -k 3
 orun "muestra la fecha"                       # enrutador automático
 owatch --interval 1 --count 10                # monitor en vivo
+ochat --session proyecto "hola"               # conversación persistente
+oprompt use resumen "texto a resumir"         # plantilla reutilizable
+ocli bench --history                          # historial de rendimiento
 ```
 
 Funciones principales de `ollama-cli.py`:
 
 | Comando | Qué hace |
 |---|---|
-| `chat` / `ask` | chat por streaming o interactivo |
+| `chat` / `ask` | chat por streaming o interactivo, con `--session` persistente |
 | `act` | ejecuta acciones del catálogo o propone comandos con `--free` |
 | `rag` | indexa archivos y responde con fragmentos recuperados |
 | `run` / `do` | clasifica la intención y delega en `act`, `rag` o `chat` |
-| `bench` | mide tokens/s de los modelos |
+| `prompt` | biblioteca de plantillas con variables (`{{args}}`, `{{1}}`, `{{clave}}`) |
+| `session` | listar, mostrar y borrar conversaciones guardadas |
+| `bench` | mide tokens/s y guarda el historial (`--history`) |
 | `watch` | monitor de CPU, GPU, memoria, discos y sensores |
 | `status` / `doctor` | diagnóstico y verificación |
 | `embed` | embeddings directos con `qwen:gpu` |
@@ -91,7 +96,7 @@ Funciones principales de `ollama-cli.py`:
 README.md                      Esta guía
 INSTALL.md                     Instalación paso a paso
 CHANGELOG.md                   Historial de cambios
-ollama-kit.md                  Manual completo (10+ secciones)
+ollama-kit.md                  Manual completo (13 secciones)
 ollama-cli.py                  CLI principal
 ollama-commands.json           Catálogo editable de acciones
 ollama-bench.sh                Benchmark independiente

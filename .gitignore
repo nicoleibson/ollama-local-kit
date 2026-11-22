@@ -9,6 +9,11 @@ __pycache__/
 .venv/
 venv/
 
+# Datos generados por el usuario (sesiones, plantillas, historial)
+.ollama-sessions/
+.ollama-prompts.json
+.ollama-bench-history.jsonl
+
 # Copias de seguridad y configuraciones locales con posible información sensible
 Backups.Ollama/
 *.bak

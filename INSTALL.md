@@ -157,10 +157,19 @@ ocli act --list
 ocli rag index ~/ollama-kit.md
 ocli rag ask "cómo funciona el modo act" -k 3
 ocli watch --count 3 --interval 1
+ocli chat --session prueba --no-stream "di HOLA"
+ocli session list
+ocli prompt add resumen --text 'Resume: {{args}}'
+ocli prompt use resumen "texto de prueba" --no-stream
+ocli bench --history
 ```
 
 `ocli doctor` debe terminar con **TODO CORRECTO**. El único aviso habitual es
 "ningún modelo cargado" cuando no hay ninguna inferencia en curso.
+
+Los datos generados por el usuario (sesiones, plantillas e historial) se guardan en
+`~/.ollama-sessions/`, `~/.ollama-prompts.json` y `~/.ollama-bench-history.jsonl`.
+`backup-configs.sh` los incluye; no se suben al repositorio.
 
 ## 9. Reversión
 
@@ -174,7 +183,8 @@ sudo systemctl restart ollama
 
 rm -f ~/ollama-cli.py ~/ollama-bench.sh ~/ollama-act.py \
       ~/ollama-commands.json ~/ollama-kit.md
-rm -rf ~/ollama-scripts ~/.ollama-rag
+rm -rf ~/ollama-scripts ~/.ollama-rag ~/.ollama-sessions
+rm -f ~/.ollama-prompts.json ~/.ollama-bench-history.jsonl
 ```
 
 Después elimina el bloque `>>> ollama-cli personal >>>` de `~/.bashrc` y recarga la
