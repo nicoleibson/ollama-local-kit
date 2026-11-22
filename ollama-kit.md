@@ -16,6 +16,7 @@ orag index /home/onion/ollama-kit.md      # indexar archivos para RAG
 orag ask "cómo funciona el modo act"      # preguntar sobre lo indexado
 orun "muestra la fecha"                   # enrutador: act / rag / chat
 owatch                                    # monitor en vivo
+odgpu "tu pregunta"                       # Gemma4 en la R7 260X (instancia aislada)
 ochat --session proyecto "hola"           # conversación persistente
 oprompt use resumen "texto a resumir"     # plantilla reutilizable
 ollama ps                                 # comprobar que dice 100% GPU
@@ -46,6 +47,7 @@ ollama-cli.py rag clear --yes
 ollama-cli.py run "muestra la fecha"             # enrutador automático
 ollama-cli.py run --intent rag "qué dice el manual..."
 ollama-cli.py watch --count 5 --interval 1
+gemma4-dgpu.sh --bench                            # Gemma4 en dGPU, instancia temporal
 ollama-cli.py chat --session proyecto "hola"     # conversación persistente
 ollama-cli.py session list
 ollama-cli.py prompt add resumen --text 'Resume: {{args}}'
@@ -70,6 +72,7 @@ orun                       # ollama-cli.py run
 owatch                     # ollama-cli.py watch
 oprompt                    # ollama-cli.py prompt
 osess                      # ollama-cli.py session
+odgpu                      # gemma4-dgpu.sh (R7 260X aislada)
 ```
 
 **Autocompletado con Tab** instalado en
@@ -98,7 +101,7 @@ después se usa un tag. Al importar, los pesos se copian a
 | `Qwen3-Embedding-0.6B-f16.gguf` (1,2 G) | — | Innecesario, ya hay F16 |
 | `Qwen3-4B-...Q4_K_M.gguf` (2,4 G) | — | ❌ No importar: ~2 tok/s |
 | `Qwen3.5-4B-...Q4_K_M.gguf` (2,6 G) | `qwen35:gpu`, `qwen35:embed` | 2,61 tok/s; ver nota abajo |
-| `Gemma-4-E4B-...Q2_K_P.gguf` (4,2 G) | `gemma4:cpu` | 2,5 tok/s en CPU; no cabe en la iGPU |
+| `Gemma-4-E4B-...Q2_K_P.gguf` (4,2 G) | `gemma4:cpu`, `gemma4:dgpu` | 2,5 tok/s CPU; 8,5 tok/s en dGPU aislada; no cabe en la iGPU |
 
 `qwen:gpu` no viene de esos archivos: es `Qwen3-0.6B-Base` F16, **solo embedding**
 (`/api/chat` y `/api/generate` responden `does not support`). `nemotron3:gpu` es
@@ -212,7 +215,8 @@ offloaded 27/27 layers to GPU
 | Ejecutar acciones en terminal | `ocli act` / `ocli act --free` | JSON forzado, catálogo editable |
 | Vectores para RAG | `qwen:gpu` | Solo `/api/embed`; `qwen-embed:q8` quedó opcional, no importado |
 | Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; `gemma3:q4` copia fragmentos |
-| Probar Gemma 4 (solo CPU) | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
+| Probar Gemma 4 en la R7 260X | `odgpu` → `gemma4:dgpu` | 8,5 tok/s, instancia aislada; no cambia el default |
+| Probar Gemma 4 en CPU | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
 
 ```bash
 ollama run gemma3:q4 "¿por qué el cielo es azul?"   # una pregunta
@@ -455,7 +459,48 @@ CPU consumen. Es solo lectura y usa la API local de Ollama.
 
 ---
 
-## 8. Sesiones, prompts e historial de benchmarks
+## 8. Gemma 4 en la R7 260X (instancia aislada)
+
+Gemma 4 E4B (7,5 B, Q2_K) **no cabe en la iGPU**, pero sí en la R7 260X.
+`gemma4:dgpu` fija `num_gpu 42` y `num_ctx 2048`, pero la GPU no la elige el
+Modelfile: la decide la variable de proceso `GGML_VK_VISIBLE_DEVICES=1`.
+Por eso `odgpu` levanta una instancia temporal en el puerto 11435, ejecuta la
+petición y la apaga al terminar (también con Ctrl+C):
+
+```bash
+odgpu "tu pregunta"                     # una respuesta
+odgpu --stats "tu pregunta"             # con tokens/s
+odgpu --chat                            # conversación interactiva
+odgpu --bench                           # 80 tokens, sin guardar en el historial
+```
+
+El script **no toca `override.conf` ni el servicio principal**: este sigue con
+`GGML_VK_VISIBLE_DEVICES=0` y la iGPU continúa siendo el default de todos los
+modelos. Si el puerto 11435 ya está ocupado, se niega a arrancar. El log de la
+instancia temporal se escribe en `/tmp/ollama-gemma4-dgpu.log`.
+
+### Resultados medidos (22/11/2026)
+
+| Configuración | tok/s |
+|---|---|
+| Gemma4 en dGPU, 42 capas, ctx 2048 | **8,54** |
+| Gemma4 en dGPU, 36 capas | 4,39 |
+| Gemma4 en CPU | 2,33–2,56 |
+| Nemotron3 en iGPU | 3,47 |
+| Nemotron3 en dGPU | 11,22 |
+
+Con 42 capas se cargan 42/43 en GPU y se usan ~1,92 GiB de VRAM de ~2,0 GiB; el
+margen es justo, por eso bajar a 36 capas empeora mucho el rendimiento. Con
+`num_gpu > 0` en la iGPU sigue fallando (`Not enough memory for command
+submission`). La R7 260X se usa **solo** bajo este procedimiento.
+
+Nota: sin `think:false`, Gemma4 gasta los tokens en razonamiento interno y
+devuelve `response` vacío. La CLI y el script lo desactivan; las cifras de arriba
+son con `think:false`.
+
+---
+
+## 9. Sesiones, prompts e historial de benchmarks
 
 ### Conversaciones persistentes
 
@@ -522,7 +567,7 @@ o los parámetros de un Modelfile.
 
 ---
 
-## 9. Otras recetas de API
+## 10. Otras recetas de API
 
 ```bash
 # Generar texto
@@ -540,7 +585,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 
 ---
 
-## 10. Benchmarks y decisiones ya probadas
+## 11. Benchmarks y decisiones ya probadas
 
 | Configuración | tok/s |
 |---|---:|
@@ -552,6 +597,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 | `nemotron3:gpu` | 2,6–3,6 |
 | `qwen35:gpu` (33/33 capas en GPU) | 2,61 |
 | `gemma4:cpu` (100% CPU, 0 GiB VRAM) | 2,56 |
+| `gemma4:dgpu` (42/43 capas, instancia aislada) | 8,54 |
 
 - `OLLAMA_SCHED_SPREAD=true` **no reparte capas** en Ollama 0.33.2 + Vulkan: el modelo
   va entero a un dispositivo. Por eso se descartó usar ambas GPUs.
@@ -573,7 +619,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 
 ---
 
-## 11. Importar otro GGUF (plantilla)
+## 12. Importar otro GGUF (plantilla)
 
 ```bash
 cat > /home/onion/Documentos/ModelsIA/Modelfile.NOMBRE <<'EOF'
@@ -593,7 +639,7 @@ como experimento documentado, no como modelo de uso diario.
 
 ---
 
-## 12. Solución de problemas
+## 13. Solución de problemas
 
 | Síntoma | Causa / solución |
 |---|---|
@@ -602,7 +648,8 @@ como experimento documentado, no como modelo de uso diario.
 | Gobernador vuelve a `powersave` o el timer está `failed` | Quitar `After=power-profiles-daemon.service` de `cpu-performance.service`, `systemctl daemon-reload`, `systemctl enable --now cpu-performance-enforce.timer`; revisar `journalctl -u cpu-performance.service` |
 | `powerprofilesctl set performance: invalid choice` | Normal: este sistema solo tiene `power-saver`/`balanced`; usar `cpupower` |
 | `does not support chat` / `generate` con qwen | Es embedding: usar `/api/embed` |
-| `Not enough memory for command submission` con `gemma4:gpu` | El modelo no cabe en la iGPU; usar `gemma4:cpu` (`num_gpu 0`) |
+| `Not enough memory for command submission` con Gemma4 en la iGPU | El modelo no cabe ahí; usa `gemma4:cpu` (`num_gpu 0`) u `odgpu` para la R7 260X |
+| Gemma4 devuelve `response` vacío | Está gastando los tokens en `<think>`; la CLI y `odgpu` envían `think:false` |
 | El enrutador `run` elige mal | Usar `orun --intent act\|rag\|chat ...` o revisar con `--dry-run` |
 | El chat con `--session` olvida cosas | El historial supera `num_ctx=2048`; usa `--new-session` o conversaciones más cortas |
 | Un prompt no sustituye `{{variable}}` | Pasar `--var clave=valor` o argumentos posicionales; la CLI avisa si quedan variables |
@@ -611,7 +658,7 @@ como experimento documentado, no como modelo de uso diario.
 
 ---
 
-## 13. Mantenimiento y reversión
+## 14. Mantenimiento y reversión
 
 ```bash
 watch -n 2 sensors                 # temperatura, consumo, ventilador
@@ -622,8 +669,9 @@ ollama show gemma3:q4              # detalle del modelo
 ollama stop gemma3:q4              # descargarlo de memoria
 ```
 
-Volver a la R7 260X: cambiar `GGML_VK_VISIBLE_DEVICES=0` por `1` en el override,
-`sudo systemctl daemon-reload && sudo systemctl restart ollama`.
+Volver a la R7 260X de forma global: cambiar `GGML_VK_VISIBLE_DEVICES=0` por `1` en el
+override, `sudo systemctl daemon-reload && sudo systemctl restart ollama`. Para Gemma4
+no hace falta: `odgpu` usa la dedicada solo durante su propia llamada.
 
 Deshacer los cambios:
 

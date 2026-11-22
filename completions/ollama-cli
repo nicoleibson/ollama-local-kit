@@ -1,5 +1,5 @@
 # Autocompletado para ollama-cli.py y sus alias (ocli, ochat, oact, orag,
-# orun, owatch, oprompt, osess).
+# orun, owatch, oprompt, osess, odgpu).
 # Se instala desde ~/.bashrc; no necesita bash-completion adicional.
 
 _ollama_cli_models() {
@@ -60,6 +60,7 @@ _ollama_cli_complete() {
         owatch) w=(ollama-cli.py watch "${COMP_WORDS[@]:1}") ;;
         oprompt) w=(ollama-cli.py prompt "${COMP_WORDS[@]:1}") ;;
         osess)  w=(ollama-cli.py session "${COMP_WORDS[@]:1}") ;;
+        odgpu)  w=(ollama-cli.py chat -m gemma4:dgpu "${COMP_WORDS[@]:1}") ;;
         *)     w=("${COMP_WORDS[@]}") ;;
     esac
 
@@ -183,4 +184,4 @@ _ollama_cli_complete() {
     COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
 }
 
-complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag orun owatch oprompt osess
+complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag orun owatch oprompt osess odgpu

@@ -147,7 +147,7 @@ alineación a 32 bytes que exige llama.cpp. El Modelfile fija `num_ctx 512` porq
 con 2048 se agota la VRAM compartida. No se recomienda como default de RAG: es ~5x
 más lento y menos preciso que `qwen:gpu`.
 
-### Gemma 4 E4B (opcional, solo CPU)
+### Gemma 4 E4B (opcional)
 
 El GGUF de 4,2 GB no cabe en la iGPU Carrizo: con `num_gpu > 0` el backend Vulkan
 falla con `Not enough memory for command submission`. Importarlo con el Modelfile
@@ -162,6 +162,27 @@ ocli bench gemma4:cpu --tokens 20
 
 Rinde ~2,5 tok/s. No se recomienda como modelo principal: `gemma3:q4` es ~4x más
 rápido y usa la iGPU. Se conserva solo para probar la arquitectura `gemma4`.
+
+### Gemma 4 en la R7 260X (opcional, aislada)
+
+Sí cabe en la dedicada. El tag `gemma4:dgpu` fija `num_gpu 42` y `num_ctx 2048`,
+pero la GPU la selecciona la variable de proceso `GGML_VK_VISIBLE_DEVICES=1`.
+El script `ollama-scripts/gemma4-dgpu.sh` levanta una instancia temporal en el
+puerto 11435 con esa variable, ejecuta la petición y apaga el proceso al terminar:
+
+```bash
+# Ajusta la ruta FROM en config/Modelfile.gemma4-dgpu si hace falta
+ollama create gemma4:dgpu -f config/Modelfile.gemma4-dgpu
+chmod +x ollama-scripts/gemma4-dgpu.sh     # o copiarlo a ~/ollama-scripts/
+odgpu "tu pregunta"
+odgpu --chat
+odgpu --bench
+```
+
+Mide ~8,5 tok/s con 42/43 capas en GPU y ~1,92 GiB de VRAM (de ~2,0 GiB). No
+modifica `override.conf` ni el servicio principal: la iGPU sigue siendo el
+default del resto de modelos. Si el puerto 11435 está ocupado, el script aborta.
+Ver detalles y comparativa en [`ollama-kit.md`](ollama-kit.md), sección 8.
 
 ## 8. Verificación final
 

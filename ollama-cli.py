@@ -35,6 +35,7 @@ INFO = {
     "qwen35:gpu": ("Qwen3.5 4B Q4_K_M", "2,61 tok/s", "generación, 33/33 capas GPU"),
     "qwen35:embed": ("Qwen3.5 4B + pooling_type", "embedding", "alternativa RAG, 2560 dim"),
     "gemma4:cpu": ("Gemma 4 E4B Q2_K", "2,5 tok/s", "CPU: no cabe en la iGPU"),
+    "gemma4:dgpu": ("Gemma 4 E4B en R7 260X", "8,5 tok/s", "solo con odgpu (puerto 11435)"),
 }
 
 DEFAULT_CATALOG = {
@@ -551,6 +552,7 @@ def cmd_bench(args):
     for model in models:
         r = api("/api/generate", {
             "model": model, "prompt": BENCH_PROMPT, "stream": False,
+            "think": False,
             "options": {"num_ctx": 2048, "num_predict": args.tokens},
         })
         if r.get("error"):
@@ -812,6 +814,7 @@ def cmd_config(args):
     print("  owatch -> ollama-cli.py watch")
     print("  oprompt-> ollama-cli.py prompt")
     print("  osess  -> ollama-cli.py session")
+    print("  odgpu  -> ollama-scripts/gemma4-dgpu.sh (R7 260X aislada)")
 
 
 # ---------------------------------------------------------------------------

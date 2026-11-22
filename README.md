@@ -34,6 +34,7 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 | `qwen35:gpu` | generación alternativa, 100% GPU | 2,61 tok/s, 2,66 GiB VRAM |
 | `qwen35:embed` | embeddings alternativos (no recomendado) | 2560 dimensiones, ~5 s / 5 textos |
 | `gemma4:cpu` | prueba de Gemma 4, solo CPU | 2,56 tok/s, 0 GiB VRAM |
+| `gemma4:dgpu` | Gemma 4 en la R7 260X, vía `odgpu` | 8,54 tok/s, instancia aislada |
 
 `qwen:latest`, `gemma3:latest` y `nemotron3:latest` rinden menos: no tienen
 `num_gpu` fijo en el Modelfile.
@@ -44,9 +45,18 @@ instalado como alternativa. El GGUF original no se modificó; `qwen35:embed` usa
 con `qwen35.pooling_type=3` generada por [`tools/make_qwen35_embed.py`](tools/make_qwen35_embed.py).
 Detalles y comparativa completa en [`ollama-kit.md`](ollama-kit.md).
 
-Gemma 4 E4B (7,5 B, Q2_K, 4,2 GB) se importó como `gemma4:cpu`: **no cabe en la iGPU**
-y cualquier `num_gpu > 0` agota el backend Vulkan, así que usa `num_gpu 0` y `num_ctx 512`.
-Rinde 2,5 tok/s en CPU con 0 GiB de VRAM; se conserva como modelo de prueba, no como default.
+Gemma 4 E4B (7,5 B, Q2_K, 4,2 GB) **no cabe en la iGPU**: cualquier `num_gpu > 0` agota
+el backend Vulkan. Existen dos variantes: `gemma4:cpu` (`num_gpu 0`, 2,5 tok/s) y
+`gemma4:dgpu` (`num_gpu 42`, **8,5 tok/s** en la R7 260X). La GPU no se elige desde el
+Modelfile: [`ollama-scripts/gemma4-dgpu.sh`](ollama-scripts/gemma4-dgpu.sh) levanta una
+instancia temporal en el puerto 11435 con `GGML_VK_VISIBLE_DEVICES=1`, ejecuta la
+petición y la apaga, sin tocar el servicio principal ni la iGPU:
+
+```bash
+odgpu "tu pregunta"
+odgpu --chat
+odgpu --bench
+```
 
 ## Inicio rápido
 
@@ -62,6 +72,7 @@ orag index /home/onion/ollama-kit.md
 orag ask "cómo funciona el modo act" -k 3
 orun "muestra la fecha"                       # enrutador automático
 owatch --interval 1 --count 10                # monitor en vivo
+odgpu "explica la dispersión de Rayleigh"      # Gemma4 en dGPU aislada
 ochat --session proyecto "hola"               # conversación persistente
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento

@@ -7,6 +7,7 @@ alias orun='$HOME/ollama-cli.py run'
 alias owatch='$HOME/ollama-cli.py watch'
 alias oprompt='$HOME/ollama-cli.py prompt'
 alias osess='$HOME/ollama-cli.py session'
+alias odgpu='$HOME/ollama-scripts/gemma4-dgpu.sh'
 # >>> ollama-cli completion >>>
 if [[ -r "$HOME/.local/share/bash-completion/completions/ollama-cli" ]]; then
     source "$HOME/.local/share/bash-completion/completions/ollama-cli"

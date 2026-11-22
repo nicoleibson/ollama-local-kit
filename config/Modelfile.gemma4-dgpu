@@ -1,0 +1,6 @@
+# Gemma 4 E4B Q2_K_P para la R7 260X (instancia aislada, GGML_VK_VISIBLE_DEVICES=1)
+# 42/43 capas en GPU, 1,92 GiB de VRAM. No usar con el servicio principal (iGPU).
+FROM /home/onion/Documentos/ModelsIA/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q2_K_P.gguf
+PARAMETER temperature 0.3
+PARAMETER num_ctx 2048
+PARAMETER num_gpu 42

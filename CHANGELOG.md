@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-22 (sexta tanda)
+
+- Prueba aislada de Gemma4 en la R7 260X: 42/43 capas en GPU, ~1,92 GiB de VRAM y
+  **8,54 tok/s** frente a 2,56 en CPU. El servicio principal y `override.conf` no
+  se tocaron; la instancia temporal se apagó y el puerto 11435 quedó cerrado.
+- Nuevo tag `gemma4:dgpu` (`config/Modelfile.gemma4-dgpu`) y script
+  `ollama-scripts/gemma4-dgpu.sh`: arranca Ollama en 11435 con
+  `GGML_VK_VISIBLE_DEVICES=1`, ejecuta la petición y la apaga siempre. Alias `odgpu`.
+- `bench` envía `think:false` para que tok/s sea comparable con el uso real de la CLI.
+- Manual (nueva sección 8), README, INSTALL, autocompletado y `INFO` actualizados.
+
 ## 2026-11-22 (quinta tanda)
 
 - Corregido `stop --all`: antes ignoraba la opción y fallaba; ahora descarga todos

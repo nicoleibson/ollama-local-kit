@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Gemma 4 E4B en la R7 260X, sin tocar el servicio principal (iGPU).
+# Arranca una instancia temporal en 11435, ejecuta la petición y la apaga siempre.
+#
+# Uso:
+#   gemma4-dgpu.sh "tu pregunta"          # una respuesta
+#   gemma4-dgpu.sh --chat                 # chat interactivo (Ctrl+C para salir)
+#   gemma4-dgpu.sh --bench                # medir 80 tokens
+#   gemma4-dgpu.sh --stats "tu pregunta"  # cualquier opción de `ollama-cli.py chat`
+set -euo pipefail
+
+PORT=11435
+HOST="http://127.0.0.1:$PORT"
+MODEL="gemma4:dgpu"
+CLI="/home/onion/ollama-cli.py"
+LOG="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.log"
+PIDFILE="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.pid"
+
+cleanup() {
+    if [[ -f "$PIDFILE" ]]; then
+        local pid
+        pid=$(cat "$PIDFILE" 2>/dev/null || true)
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PIDFILE"
+    fi
+}
+trap cleanup EXIT INT TERM
+
+if curl -sf --max-time 2 "$HOST/api/tags" >/dev/null 2>&1; then
+    echo "ERROR: ya hay una instancia escuchando en $PORT. Ciérrala antes de continuar." >&2
+    exit 1
+fi
+
+if ! curl -sf --max-time 2 http://127.0.0.1:11434/api/tags | grep -q "$MODEL"; then
+    echo "ERROR: falta el tag $MODEL. Créalo con:" >&2
+    echo "  ollama create $MODEL -f ~/ollama-local-kit/config/Modelfile.gemma4-dgpu" >&2
+    exit 1
+fi
+
+nohup env \
+    OLLAMA_HOST="$HOST" \
+    OLLAMA_MODELS=/usr/share/ollama/.ollama/models \
+    GGML_VK_VISIBLE_DEVICES=1 \
+    OLLAMA_CONTEXT_LENGTH=2048 \
+    OLLAMA_NUM_PARALLEL=1 \
+    OLLAMA_MAX_LOADED_MODELS=1 \
+    OLLAMA_KEEP_ALIVE=5m \
+    OLLAMA_KV_CACHE_TYPE=q8_0 \
+    OLLAMA_IGPU_ENABLE=1 \
+    OLLAMA_NO_CLOUD=true \
+    OLLAMA_NOPRUNE=true \
+    ollama serve > "$LOG" 2>&1 &
+echo $! > "$PIDFILE"
+
+ready=0
+for _ in $(seq 1 20); do
+    if curl -sf --max-time 2 "$HOST/api/tags" >/dev/null 2>&1; then ready=1; break; fi
+    sleep 1
+done
+if (( ! ready )); then
+    echo "ERROR: la instancia temporal no arrancó. Revisa $LOG" >&2
+    exit 1
+fi
+
+echo "R7 260X aislada en $PORT (GGML_VK_VISIBLE_DEVICES=1). Se apagará al terminar." >&2
+
+case "${1:-}" in
+    --bench)
+        OLLAMA_HOST="$HOST" "$CLI" bench "$MODEL" --tokens 80 --no-save
+        ;;
+    --chat)
+        shift
+        OLLAMA_HOST="$HOST" "$CLI" chat -m "$MODEL" "$@"
+        ;;
+    *)
+        OLLAMA_HOST="$HOST" "$CLI" chat -m "$MODEL" "$@"
+        ;;
+esac
