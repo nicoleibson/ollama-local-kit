@@ -28,9 +28,9 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 
 | Modelo | Uso | Rendimiento medido |
 |---|---|---|
-| `gemma3:gpu` | **principal**: chat, `oflow`, acciones, tests (Q6_K uncensored) | 7,8 tok/s |
+| `gemma3:gpu` | **principal**: chat, `oflow`, acciones, agente, RAG, enrutador y tests (Q6_K uncensored) | 7,8 tok/s |
 | `gemma3:q4` | alternativa rápida (Q4_K_M) | 9,3–9,8 tok/s |
-| `nemotron3:gpu` | razonamiento, `act`, RAG, enrutador | ~2,6–3,5 tok/s |
+| `nemotron3:gpu` | **respaldo** de razonamiento (`--reasoning` o `OLLAMA_KIT_TASK_MODE=0`) y `act --free` | ~2,6–3,5 tok/s |
 | `qwen:gpu` | embeddings (solo `/api/embed`) | 1024 dimensiones, ~1 s / 5 textos |
 | `qwen35:gpu` | generación alternativa, 100% GPU | 2,61 tok/s, 2,66 GiB VRAM |
 | `qwen35:embed` | embeddings alternativos (no recomendado) | 2560 dimensiones, ~5 s / 5 textos |
@@ -82,8 +82,9 @@ ocloud chat -m glm-5.3 "revisa este diff"     # nube bajo demanda
 onvidia chat "resume esto"                    # Nemotron 3.5 Lightning por defecto
 onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
 ogemini chat -m gemini-4-hydrogen "explica esto"
-oagent                                        # REPL agente con herramientas
+oagent --prompt "resume este repo"             # tarea única, sin REPL
 oagent --root ~/ollama-local-kit --session trabajo
+oagent --reasoning --prompt "analiza este diff"  # respaldo Nemotron
 ofree chat -m glm-5.3-flash "hola"            # gratuito: traduce a nemotron3:gpu
 oflow map informe.md --prompt "Resume en 3 viñetas" --out informe
 oflow slide novela.txt --prompt "Continúa el resumen" --carry 300
@@ -98,17 +99,26 @@ ocli bench --history                          # historial de rendimiento
 ogui                                          # ventana local: ver, ejecutar y chatear
 ```
 
-`ogui` abre nueve pestañas (Resumen, Modelos, Chat, RAG, Acciones, Sesiones,
-Flujos, Comandos y Registro). Fuerza `OLLAMA_KIT_LOCAL=1`, elimina variables de
-nube/API key, pide confirmación para acciones que escriben o descargan modelos y
-no lanza ninguna inferencia al abrirse. El chat usa `chat --no-stream` en un hilo
-para no congelar la interfaz.
+`ogui` abre **doce pestañas**: Resumen, Modelos, Chat, RAG, Acciones, **Agente**,
+**Prompts**, **Bench**, Sesiones, Flujos, Comandos y Registro. Fuerza
+`OLLAMA_KIT_LOCAL=1` y `OLLAMA_KIT_TASK_MODE=1`, elimina variables de nube/API
+key, pide confirmación para acciones que escriben o descargan modelos y no lanza
+ninguna inferencia al abrirse. El chat usa `chat --no-stream` en un hilo para no
+congelar la interfaz.
 
-RAG indexa archivos con `qwen:gpu` y pregunta con `nemotron3:gpu`. Acciones
-simula con `act --dry-run` y solo ejecuta entradas de solo lectura tras
-confirmación; nunca expone `--free`, `--yes` ni `--allow-dangerous`. `run` solo
-ejecuta directamente `chat`/`rag` y `code commit` únicamente redacta el mensaje.
-También hay lanzador de escritorio (`Kit Ollama local`). Detalles en
+Las pestañas nuevas cubren el perfil de tareas: **Agente** ejecuta `agent
+--prompt` (una sola petición, sin REPL, sin `--yes` ni `--allow-dangerous`) y
+muestra `RAZONAMIENTO AGENTE:`; **Prompts** gestiona la biblioteca de plantillas;
+**Bench** mide modelos locales y dibuja barras de tok/s con el historial.
+Toda respuesta de la CLI incluye un bloque `RAZONAMIENTO:`; si el modelo no puede
+pensar, se indica `(el modelo no devolvió texto de razonamiento)`.
+
+RAG indexa archivos con `qwen:gpu` y pregunta con `gemma3:gpu` (usa
+`--reasoning` para sintetizar con `nemotron3:gpu`). Acciones simula con `act
+--dry-run` y solo ejecuta entradas de solo lectura tras confirmación; nunca
+expone `--free`, `--yes` ni `--allow-dangerous`. `run` solo ejecuta directamente
+`chat`/`rag` y `code commit` únicamente redacta el mensaje. También hay lanzador
+de escritorio (`Kit Ollama local`). Detalles en
 [`ollama-kit.md`](ollama-kit.md#17-ventana-interactiva-ogui).
 
 Funciones principales de `ollama-cli.py`:
@@ -128,6 +138,7 @@ Funciones principales de `ollama-cli.py`:
 | `debug` | errores, peticiones y tracebacks de la CLI (`~/.ollama-debug.log`) |
 | `embed` | embeddings directos con `qwen:gpu` |
 | `flow` / `oflow` | flujos de contexto corto: `map`, `slide`, `classify`, `ask` |
+| `agent` | REPL con herramientas o `agent --prompt` para una sola tarea; decisión y razonamiento visibles |
 | `list` / `show` / `import` / `rm` / `stop` | gestión de modelos |
 
 ## Programar y depurar
@@ -141,6 +152,40 @@ y `orag ask "..."`; para ejecutar comprobaciones, `oact "run_tests"` o
 Los comandos de `act` muestran `[->]`, duración y `[OK]`/`[X] exit N`. Todo queda en
 `~/.ollama-debug.log`: `odebug` resume, `odebug --full` muestra tracebacks y
 `ocli --debug ...` añade trazas en directo. Ver manual, sección 9.
+
+## Perfil de tareas y razonamiento visible
+
+Por defecto el kit trabaja en **perfil tareas**: el modelo recibe instrucciones
+de respuesta corta y verificable en vez de mantener conversaciones largas.
+`gemma3:gpu` atiende `chat`, `act`, `run`, el agente, RAG y los flujos;
+`qwen:gpu` sigue en embeddings. `ocli config` lo resume así:
+
+```text
+PERFIL: TAREAS (acciones cortas)
+RAZONAMIENTO: siempre visible en todas las respuestas
+Modelos por defecto: tareas=gemma3:gpu, respaldo=nemotron3:gpu (--reasoning), embeddings=qwen:gpu
+```
+
+El razonamiento **siempre se muestra**, con el prefijo `RAZONAMIENTO:`. Se envía
+`think` solo a los modelos que declaran la capacidad `thinking`
+(`nemotron3:gpu`); Gemma 3 solo declara `completion` y rechaza `think=true` con
+HTTP 400, así que en ese caso se imprime `(el modelo no devolvió texto de
+razonamiento)`. `--think` queda como bandera histórica compatible. Para volver
+al respaldo usa `--reasoning` o `OLLAMA_KIT_TASK_MODE=0`.
+
+## Pruebas versionadas
+
+Las pruebas viven en [`tests/`](tests/) y no hacen inferencias: simulan la API,
+los subprocess y los widgets de Tkinter. Cubren agente, flujos, modo gratuito,
+GUI (12 pestañas), proveedores, defaults y perfil de tareas.
+
+```bash
+for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
+bash ~/ollama-scripts/selftest.sh        # sintaxis, catálogo, RAG, doctor y tests
+```
+
+`selftest.sh` busca las pruebas en `~/ollama-local-kit/tests`; con
+`OLLAMA_KIT_TESTS` se puede apuntar a otra copia. Termina con `SELFTEST OK`.
 
 ## Flujos con contexto corto
 
@@ -183,11 +228,15 @@ fuerza el servidor local, ignora las keys y traduce nombres cloud habituales
 ## Modo agente interactivo
 
 `oagent` es un REPL con herramientas (`read`, `list`, `grep`, `rag`, `write`,
-`edit`, `bash`) que encadena llamadas al modelo mediante JSON Schema. Arranca con
-`nemotron3:gpu`, mantiene sesión y permite `/undo` de los cambios. Las
-operaciones de lectura son automáticas; escribir, editar o ejecutar comandos
-piden confirmación, y las rutas quedan confinadas a `--root`. Al salir imprime el
-comando para reabrir esa sesión con su `--root`. Ver manual, secciones 9 y 10.
+`edit`, `bash`) que encadena llamadas al modelo mediante JSON Schema. En perfil
+tareas arranca con `gemma3:gpu` y 4 pasos; `--reasoning` usa `nemotron3:gpu`.
+Con `oagent --prompt "..."` ejecuta **una sola tarea y sale**, sin entrar en
+REPL; es lo que hace la pestaña Agente de `ogui`. Mantiene sesión y permite
+`/undo` de los cambios. Las operaciones de lectura son automáticas; escribir,
+editar o ejecutar comandos piden confirmación, y las rutas quedan confinadas a
+`--root`. Al salir imprime el comando para reabrir esa sesión con su `--root`.
+Toda decisión se imprime como `RAZONAMIENTO AGENTE:`. Ver manual, secciones 9,
+10 y 18.
 
 ## Seguridad
 
@@ -207,14 +256,17 @@ comando para reabrir esa sesión con su `--root`. Ver manual, secciones 9 y 10.
 README.md                      Esta guía
 INSTALL.md                     Instalación paso a paso
 CHANGELOG.md                   Historial de cambios
-ollama-kit.md                  Manual completo (15 secciones)
+ollama-kit.md                  Manual completo (18 secciones)
 ollama-cli.py                  CLI principal
+ollama-kit-gui.py              Ventana Tkinter (`ogui`)
 ollama-commands.json           Catálogo editable de acciones
 ollama-bench.sh                Benchmark independiente
 ollama-act.py                  Executor antiguo (6 comandos, legado)
-ollama-scripts/                16 scripts ejecutables por el modelo
+ollama-scripts/                Scripts ejecutables por el modelo y `selftest.sh`
+tests/                         Pruebas versionadas (sin inferencias)
 completions/ollama-cli         Autocompletado para bash
-config/                        Drop-ins de systemd, sysctl y Modelfiles
+config/                        Drop-ins, sysctl, Modelfiles y lanzador de escritorio
+assets/ollama-kit.svg          Icono del lanzador
 tools/make_qwen35_embed.py     Receta para habilitar embeddings en Qwen3.5
 ```
 

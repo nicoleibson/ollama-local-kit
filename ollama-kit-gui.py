@@ -28,7 +28,10 @@ CATALOG_PATH = Path(os.environ.get("OLLAMA_COMMANDS", str(HOME / "ollama-command
 SESSIONS_DIR = Path(os.environ.get("OLLAMA_SESSIONS_DIR", str(HOME / ".ollama-sessions")))
 FLOW_DIR = Path(os.environ.get("OLLAMA_FLOW_DIR", str(HOME / ".ollama-flow")))
 DEBUG_LOG = HOME / ".ollama-debug.log"
+PROMPTS_PATH = HOME / ".ollama-prompts.json"
+BENCH_HISTORY = HOME / ".ollama-bench-history.jsonl"
 DEFAULT_MODEL = "gemma3:gpu"
+REASONING_MODEL = "nemotron3:gpu"
 
 # Se eliminan antes de llamar a la CLI. OLLAMA_KIT_LOCAL basta para que el CLI
 # use el servidor de esta máquina aunque existan keys guardadas en ~/.ollama-*.
@@ -67,6 +70,7 @@ def local_env(extra: dict | None = None) -> dict:
     for key in CLEAR_ENV:
         env.pop(key, None)
     env["OLLAMA_KIT_LOCAL"] = "1"
+    env.setdefault("OLLAMA_KIT_TASK_MODE", "1")
     if extra:
         env.update(extra)
     return env
@@ -330,6 +334,69 @@ def all_catalog_names() -> list[str]:
     if not isinstance(data, dict):
         return []
     return sorted(key for key in data if not key.startswith("_"))
+
+
+def build_agent_argv(prompt: str, root: str = "", model: str = "",
+                     session: str = "", steps: int = 4,
+                     reasoning: bool = False) -> list[str]:
+    """Agente de una sola tarea. Nunca expone --yes ni --allow-dangerous."""
+    args = ["agent", "--prompt", prompt, "--steps", str(steps)]
+    if root:
+        args += ["--root", root]
+    if model and model != "automático":
+        args += ["-m", model]
+    if session:
+        args += ["--session", session]
+    if reasoning:
+        args.append("--reasoning")
+    return build_cli_argv(*args)
+
+
+def build_prompt_argv(action: str, name: str = "", text: str = "",
+                      desc: str = "", model: str = "",
+                      prompt_args: list[str] | None = None,
+                      variables: list[str] | None = None) -> list[str]:
+    args = ["prompt", action]
+    if name:
+        args.append(name)
+    if prompt_args:
+        args += list(prompt_args)
+    if action == "add":
+        args += ["--text", text]
+        if desc:
+            args += ["--desc", desc]
+    if action == "use":
+        args.append("--no-stream")
+    if model and model != "automático":
+        args += ["-m", model]
+    for pair in variables or []:
+        if "=" in pair:
+            args += ["--var", pair]
+    return build_cli_argv(*args)
+
+
+def load_prompts() -> dict:
+    try:
+        data = json.loads(PROMPTS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def bench_rows(limit: int = 15) -> list[dict]:
+    try:
+        lines = BENCH_HISTORY.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines[-limit:]:
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            rows.append(item)
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -1345,6 +1412,293 @@ class AccionesTab(BaseTab):
                                lambda: run_process_text(argv, timeout=300), self.output)
 
 
+class AgenteTab(BaseTab):
+    """Agente de una sola tarea: sin REPL, sin --yes y sin --allow-dangerous."""
+
+    def __init__(self, app):
+        super().__init__(app, "Agente")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
+
+        form = ttk.LabelFrame(self, text="Tarea para el agente", padding=8)
+        form.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        form.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Petición:").grid(row=0, column=0, sticky="w")
+        self.prompt = tk.StringVar()
+        ttk.Entry(form, textvariable=self.prompt).grid(
+            row=0, column=1, columnspan=3, sticky="ew", padx=(4, 8))
+        ttk.Label(form, text="Modelo:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.model_var = tk.StringVar(value="automático")
+        combo = ttk.Combobox(form, textvariable=self.model_var, width=20, state="readonly",
+                             values=["automático", DEFAULT_MODEL, REASONING_MODEL])
+        combo.grid(row=1, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
+        app.optional_model_combos.append(combo)
+        self.reasoning_var = tk.BooleanVar()
+        ttk.Checkbutton(form, text="Usar respaldo (--reasoning)",
+                        variable=self.reasoning_var).grid(
+            row=1, column=2, sticky="w", pady=(6, 0))
+        ttk.Label(form, text="Pasos:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.steps_var = tk.StringVar(value="4")
+        ttk.Spinbox(form, from_=1, to=12, textvariable=self.steps_var,
+                    width=6).grid(row=2, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
+        ttk.Label(form, text="Raíz:").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        self.root_var = tk.StringVar(value=str(HOME))
+        ttk.Entry(form, textvariable=self.root_var).grid(
+            row=3, column=1, sticky="ew", padx=(4, 8), pady=(6, 0))
+        ttk.Button(form, text="...", width=4, command=self.pick_root).grid(
+            row=3, column=2, sticky="w", pady=(6, 0))
+        ttk.Label(form, text="Sesión (opcional):").grid(row=4, column=0, sticky="w", pady=(6, 0))
+        self.session_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.session_var).grid(
+            row=4, column=1, sticky="ew", padx=(4, 8), pady=(6, 0))
+
+        bar = ttk.Frame(self)
+        bar.grid(row=1, column=0, sticky="w", pady=(0, 8))
+        ttk.Button(bar, text="Simular", command=self.simulate).pack(side="left", padx=(0, 6))
+        ttk.Button(bar, text="Ejecutar tarea", command=self.execute).pack(side="left")
+        ttk.Label(bar, text="  ·  razonamiento visible; escrituras y bash piden confirmación en terminal",
+                  foreground="#7f8c96").pack(side="left")
+
+        self.output = OutputView(self, height=13)
+        self.output.frame.grid(row=2, column=0, sticky="nsew")
+
+    def argv(self) -> list[str]:
+        return build_agent_argv(
+            self.prompt.get().strip(), self.root_var.get().strip(),
+            self.model_var.get(), self.session_var.get().strip(),
+            int(self.steps_var.get() or 4), self.reasoning_var.get(),
+        )
+
+    def pick_root(self) -> None:
+        path = filedialog.askdirectory(initialdir=self.root_var.get() or str(HOME),
+                                       title="Carpeta de trabajo del agente")
+        if path:
+            self.root_var.set(path)
+
+    def simulate(self) -> None:
+        if not self.prompt.get().strip():
+            messagebox.showinfo("Agente", "Escribe una petición.", parent=self.app)
+            return
+        self.output.write(pretty_command(self.argv()), heading="Comando simulado")
+
+    def execute(self) -> None:
+        if not self.prompt.get().strip():
+            messagebox.showinfo("Agente", "Escribe una petición.", parent=self.app)
+            return
+        argv = self.argv()
+        if not messagebox.askyesno("Confirmar tarea",
+                                   "¿Ejecutar esta tarea local?\n\n" + pretty_command(argv),
+                                   parent=self.app):
+            return
+        self.app.worker.submit("Agente · tarea única\n" + pretty_command(argv),
+                               lambda: run_process_text(argv, timeout=300), self.output)
+
+
+class PromptsTab(BaseTab):
+    def __init__(self, app):
+        super().__init__(app, "Prompts")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
+
+        top = ttk.Frame(self)
+        top.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        top.columnconfigure(0, weight=1)
+        top.rowconfigure(0, weight=1)
+        frame, self.tree = make_tree(top, [
+            ("name", "NOMBRE", 140), ("model", "MODELO", 140), ("desc", "DESCRIPCIÓN", 320),
+        ], height=7)
+        frame.grid(row=0, column=0, sticky="nsew")
+        actions = ttk.Frame(top)
+        actions.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+        for text, command in (
+            ("Actualizar", self.refresh),
+            ("Ver", self.show),
+            ("Borrar", self.remove),
+        ):
+            ttk.Button(actions, text=text, command=command).pack(fill="x", pady=1)
+
+        form = ttk.LabelFrame(self, text="Añadir o usar prompt", padding=8)
+        form.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        form.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Nombre:").grid(row=0, column=0, sticky="w")
+        self.name_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.name_var, width=20).grid(
+            row=0, column=1, sticky="w", padx=(4, 8))
+        ttk.Label(form, text="Modelo:").grid(row=0, column=2, sticky="w")
+        self.model_var = tk.StringVar(value="automático")
+        combo = ttk.Combobox(form, textvariable=self.model_var, width=18, state="readonly",
+                             values=["automático", DEFAULT_MODEL, REASONING_MODEL])
+        combo.grid(row=0, column=3, sticky="w", padx=(4, 8))
+        app.optional_model_combos.append(combo)
+        ttk.Label(form, text="Texto:").grid(row=1, column=0, sticky="nw", pady=(6, 0))
+        self.text = scrolledtext.ScrolledText(form, height=3, wrap="word",
+                                              font=("DejaVu Sans Mono", 10),
+                                              bg="#10181e", fg="#dfe7ec", relief="flat")
+        self.text.grid(row=1, column=1, columnspan=3, sticky="ew", padx=(4, 8), pady=(6, 0))
+        ttk.Label(form, text="Descripción:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.desc_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.desc_var).grid(
+            row=2, column=1, sticky="ew", padx=(4, 8), pady=(6, 0))
+        ttk.Label(form, text="Args / variables:").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        self.args_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.args_var).grid(
+            row=3, column=1, columnspan=2, sticky="ew", padx=(4, 8), pady=(6, 0))
+        ttk.Button(form, text="Guardar", command=self.add).grid(row=4, column=1, sticky="w", pady=(8, 0))
+        ttk.Button(form, text="Usar", command=self.use).grid(row=4, column=2, sticky="w", pady=(8, 0))
+
+        self.output = OutputView(self, height=9)
+        self.output.frame.grid(row=2, column=0, sticky="nsew")
+
+    def refresh(self, after=None) -> None:
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        for index, (name, item) in enumerate(sorted(load_prompts().items())):
+            self.tree.insert("", "end", iid=name, values=(
+                name, item.get("model") or "default", item.get("desc", "")),
+                tags=("odd",) if index % 2 else ())
+        if after:
+            after()
+
+    def selected(self) -> str:
+        selection = self.tree.selection()
+        return selection[0] if selection else ""
+
+    def show(self) -> None:
+        name = self.selected()
+        if not name:
+            messagebox.showinfo("Prompts", "Selecciona un prompt.", parent=self.app)
+            return
+        item = load_prompts().get(name, {})
+        self.output.write(f"Modelo: {item.get('model') or 'default'}\n\n{item.get('text', '')}",
+                          heading=name)
+
+    def add(self) -> None:
+        name = self.name_var.get().strip()
+        text = self.text.get("1.0", "end-1c").strip()
+        if not name or not text:
+            messagebox.showinfo("Prompts", "Indica nombre y texto.", parent=self.app)
+            return
+        argv = build_prompt_argv("add", name, text, self.desc_var.get().strip(),
+                                 self.model_var.get())
+        self.app.worker.submit("Guardar prompt\n" + pretty_command(argv),
+                               lambda: run_process_text(argv, timeout=30),
+                               self.output, after=self.refresh)
+
+    def remove(self) -> None:
+        name = self.selected()
+        if not name:
+            messagebox.showinfo("Prompts", "Selecciona un prompt.", parent=self.app)
+            return
+        argv = build_prompt_argv("rm", name)
+        if not messagebox.askyesno("Confirmar", f"¿Borrar el prompt '{name}'?\n\n" +
+                                   pretty_command(argv), parent=self.app):
+            return
+        self.app.worker.submit("Borrar prompt\n" + pretty_command(argv),
+                               lambda: run_process_text(argv, timeout=30),
+                               self.output, after=self.refresh)
+
+    def use(self) -> None:
+        name = self.name_var.get().strip() or self.selected()
+        if not name:
+            messagebox.showinfo("Prompts", "Indica qué prompt usar.", parent=self.app)
+            return
+        raw = self.args_var.get().split()
+        prompt_args = [part for part in raw if "=" not in part]
+        variables = [part for part in raw if "=" in part]
+        argv = build_prompt_argv("use", name, model=self.model_var.get(),
+                                 prompt_args=prompt_args, variables=variables)
+        shown = pretty_command(argv)
+        if not messagebox.askyesno("Confirmar", "¿Ejecutar este prompt local?\n\n" + shown,
+                                   parent=self.app):
+            return
+        self.app.worker.submit("Usar prompt\n" + shown,
+                               lambda: run_process_text(argv, timeout=300), self.output)
+
+
+class BenchTab(BaseTab):
+    def __init__(self, app):
+        super().__init__(app, "Bench")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        top = ttk.Frame(self)
+        top.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(top, text="Modelos:").pack(side="left")
+        self.models_var = tk.StringVar(value="gemma3:gpu nemotron3:gpu")
+        ttk.Entry(top, textvariable=self.models_var, width=42).pack(
+            side="left", padx=(4, 8))
+        ttk.Button(top, text="Medir", command=self.measure).pack(side="left", padx=(0, 6))
+        ttk.Button(top, text="Actualizar historial", command=self.refresh).pack(side="left")
+
+        frame, self.tree = make_tree(self, [
+            ("time", "FECHA", 140), ("model", "MODELO", 150),
+            ("tokens", "TOKENS", 80), ("seconds", "SEG", 80),
+            ("tps", "TOK/S", 80), ("vram", "VRAM", 80),
+        ], height=7)
+        frame.grid(row=1, column=0, sticky="nsew", pady=(0, 8))
+
+        chart = ttk.LabelFrame(self, text="Rendimiento (tok/s)", padding=4)
+        chart.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self.canvas = tk.Canvas(chart, height=140, bg="#0e1317", highlightthickness=0)
+        self.canvas.pack(fill="x", expand=True)
+        self.canvas.bind("<Configure>", lambda _e: self.app.after_idle(self.draw_bars))
+
+        self.output = OutputView(self, height=6)
+        self.output.frame.grid(row=3, column=0, sticky="nsew")
+
+    def refresh(self, after=None) -> None:
+        rows = bench_rows(30)
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        for index, row in enumerate(rows):
+            self.tree.insert("", "end", values=(
+                row.get("time", "?"), row.get("model", "?"), row.get("tokens", 0),
+                row.get("seconds", 0), row.get("tps", 0), row.get("vram", 0)),
+                tags=("odd",) if index % 2 else ())
+        self.rows = rows
+        self.draw_bars()
+        self.output.write(f"{len(rows)} medición(es) en {BENCH_HISTORY}",
+                          heading="Historial")
+        if after:
+            after()
+
+    def draw_bars(self) -> None:
+        rows = getattr(self, "rows", [])
+        canvas = self.canvas
+        canvas.delete("all")
+        if not rows:
+            canvas.create_text(10, 16, text="Sin mediciones guardadas", anchor="w",
+                               fill="#7f8c96")
+            return
+        width = max(canvas.winfo_width(), 420)
+        top = max(float(row.get("tps") or 0) for row in rows[:10]) or 1
+        for index, row in enumerate(rows[:10]):
+            y = 12 + index * 13
+            tps = float(row.get("tps") or 0)
+            model = str(row.get("model") or "?")[:22]
+            canvas.create_text(6, y, text=model, anchor="w", fill="#dfe7ec",
+                               font=("DejaVu Sans Mono", 9))
+            bar = (width - 190) * tps / top
+            canvas.create_rectangle(170, y - 5, 170 + max(bar, 1), y + 5,
+                                    fill="#2b6f5e", outline="")
+            canvas.create_text(178 + max(bar, 1), y, text=f"{tps:.2f}", anchor="w",
+                               fill="#7fd1b9", font=("DejaVu Sans Mono", 9))
+
+    def measure(self) -> None:
+        models = self.models_var.get().split()
+        if not models:
+            messagebox.showinfo("Bench", "Indica al menos un modelo.", parent=self.app)
+            return
+        argv = build_cli_argv("bench", *models)
+        shown = pretty_command(argv)
+        if not messagebox.askyesno("Confirmar",
+                                   "¿Medir modelos locales?\n\n" + shown, parent=self.app):
+            return
+        self.app.worker.submit("Medir modelos\n" + shown,
+                               lambda: run_process_text(argv, timeout=600),
+                               self.output, after=self.refresh)
+
+
 # ---------------------------------------------------------------------------
 # Aplicación
 # ---------------------------------------------------------------------------
@@ -1384,7 +1738,7 @@ class KitGUI(tk.Tk):
         head.pack(fill="x")
         ttk.Label(head, text="KIT OLLAMA LOCAL",
                   font=("DejaVu Sans", 16, "bold")).pack(side="left")
-        ttk.Label(head, text="  ·  modo local forzado, sin keys ni créditos",
+        ttk.Label(head, text="  ·  local, perfil tareas, razonamiento visible",
                   foreground="#7fd1b9").pack(side="left")
         ttk.Button(head, text="Actualizar todo", command=self.refresh_all).pack(side="right")
         ttk.Label(head, textvariable=self.status_var, foreground="#9fb0bb").pack(
@@ -1400,6 +1754,9 @@ class KitGUI(tk.Tk):
         self.chat_tab = ChatTab(self)
         self.rag_tab = RAGTab(self)
         self.acciones_tab = AccionesTab(self)
+        self.agente_tab = AgenteTab(self)
+        self.prompts_tab = PromptsTab(self)
+        self.bench_tab = BenchTab(self)
         self.sesiones_tab = SesionesTab(self)
         self.flujos_tab = FlujosTab(self)
         self.comandos_tab = ComandosTab(self)
@@ -1428,6 +1785,8 @@ class KitGUI(tk.Tk):
             self.resumen_tab.refresh_config,
             self.modelos_tab.refresh,
             self.rag_tab.refresh,
+            self.prompts_tab.refresh,
+            self.bench_tab.refresh,
             self.sesiones_tab.refresh,
             self.flujos_tab.refresh,
             self.comandos_tab.refresh,

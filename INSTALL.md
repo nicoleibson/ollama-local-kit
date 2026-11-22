@@ -191,10 +191,11 @@ Ver detalles y comparativa en [`ollama-kit.md`](ollama-kit.md), sección 8.
 
 ## 8. Ventana local (`ogui`)
 
-`ogui` abre un panel Tkinter nativo con nueve pestañas: Resumen, Modelos, Chat,
-RAG, Acciones, Sesiones, Flujos, Comandos y Registro. No levanta servidor ni
-navegador; fuerza `OLLAMA_KIT_LOCAL=1` y elimina variables de nube/API key en
-todos los subprocess. Al abrirla no se lanza ningún modelo.
+`ogui` abre un panel Tkinter nativo con doce pestañas: Resumen, Modelos, Chat,
+RAG, Acciones, Agente, Prompts, Bench, Sesiones, Flujos, Comandos y Registro. No
+levanta servidor ni navegador; fuerza `OLLAMA_KIT_LOCAL=1` y
+`OLLAMA_KIT_TASK_MODE=1`, y elimina variables de nube/API key en todos los
+subprocess. Al abrirla no se lanza ningún modelo.
 
 Para tenerla también en el menú de aplicaciones:
 
@@ -207,11 +208,15 @@ desktop-file-validate ~/.local/share/applications/ollama-kit.desktop  # opcional
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
 ```
 
-La pestaña RAG indexa archivos con `qwen:gpu` y pregunta con `nemotron3:gpu`.
-La pestaña Acciones simula con `act --dry-run` y solo habilita "Ejecutar segura"
-si el identificador está en la lista blanca de entradas de solo lectura; `run`
-ejecuta directamente solo `chat` y `rag`, y `code commit` únicamente redacta el
-mensaje. Detalles en [`ollama-kit.md`](ollama-kit.md#17-ventana-interactiva-ogui).
+La pestaña RAG indexa archivos con `qwen:gpu` y pregunta con `gemma3:gpu` (marca
+"Usar respaldo" para `nemotron3:gpu`). La pestaña Agente usa `agent --prompt`,
+sin REPL y sin `--yes`/`--allow-dangerous`, y muestra el razonamiento de la
+decisión; Prompts gestiona plantillas y Bench mide modelos locales. La pestaña
+Acciones simula con `act --dry-run` y solo habilita "Ejecutar segura" si el
+identificador está en la lista blanca de entradas de solo lectura; `run` ejecuta
+directamente solo `chat` y `rag`, y `code commit` únicamente redacta el mensaje.
+Detalles en [`ollama-kit.md`](ollama-kit.md#17-ventana-interactiva-ogui) y en la
+sección 18 (perfil de tareas y pruebas).
 
 ## 9. Verificación final
 
@@ -230,14 +235,17 @@ ocli prompt use resumen "texto de prueba" --no-stream
 ocli bench --history
 ocli code review ~/ollama-cli.py --lines 20 --dry-run
 ocode tests "def suma(a,b): return a+b" --no-stream
-bash ~/ollama-scripts/selftest.sh
+bash ~/ollama-scripts/selftest.sh             # debe terminar con SELFTEST OK
 odebug -n 5
-ocli config                                   # debe decir MODO: LOCAL
-oagent --help                                 # debe mostrar el REPL de agente
+ocli config                                   # MODO: LOCAL, PERFIL: TAREAS, razonamiento visible
+oagent --help                                 # debe mostrar --prompt y --reasoning
+oagent --prompt "di HOLA"                     # tarea única, sin REPL
+ocli chat -m nemotron3:gpu --no-stream "di HOLA"  # debe imprimir RAZONAMIENTO:
 ofree config                                  # debe decir GRATIS: solo modelos locales
 oflow --help                                  # debe mostrar map/slide/classify/ask
 python3 -m py_compile ~/ollama-kit-gui.py      # sintaxis de la ventana Tkinter
-ogui                                          # abre la ventana; revisa RAG y Acciones sin ejecutar nada
+ogui                                          # 12 pestañas; revisa RAG, Agente y Acciones sin ejecutar nada
+for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
 ofree flow map /home/onion/ollama-kit.md --prompt 'Resume' --out prueba --limit 1
 cat ~/.ollama-flow/prueba/report.md           # estado en disco, reanudable
 OLLAMA_KIT_PROVIDER=nvidia ollama-cli.py config | grep 'Modelo por defecto'  # opcional
@@ -268,11 +276,15 @@ ogemini config                                # PROVEEDOR: gemini
 `ocli doctor` debe terminar con **TODO CORRECTO**. El único aviso habitual es
 "ningún modelo cargado" cuando no hay ninguna inferencia en curso.
 
+`selftest.sh` comprueba sintaxis, catálogo, índice RAG, `doctor` y las ocho
+pruebas de `~/ollama-local-kit/tests/` (sin inferencias). Si el repo está en otra
+ruta, indícala con `OLLAMA_KIT_TESTS=/ruta/tests bash ~/ollama-scripts/selftest.sh`.
+
 Los datos generados por el usuario (sesiones, plantillas e historial) se guardan en
 `~/.ollama-sessions/`, `~/.ollama-prompts.json` y `~/.ollama-bench-history.jsonl`.
 `backup-configs.sh` los incluye; no se suben al repositorio.
 
-## 9. Reversión
+## 10. Reversión
 
 ```bash
 sudo rm -f /etc/systemd/system/ollama.service.d/override.conf

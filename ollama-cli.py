@@ -97,6 +97,48 @@ LOCAL_DEFAULT_MODELS = {
     "oflow": "gemma3:gpu",
 }
 
+# Perfil de tareas: el modelo ejecuta acciones cortas y verificables en lugar de
+# mantener conversaciones largas. El razonamiento se pide y se MUESTRA siempre;
+# el perfil solo acorta y estructura la salida. --reasoning (o TASK_MODE=0)
+# recupera nemotron3:gpu para los roles de respaldo.
+TASK_MODE = os.environ.get("OLLAMA_KIT_TASK_MODE", "1") != "0"
+TASK_MODEL = "gemma3:gpu"
+REASONING_MODEL = "nemotron3:gpu"
+
+
+def use_reasoning(args=None) -> bool:
+    return bool(getattr(args, "reasoning", False)) or not TASK_MODE
+
+
+def default_model_for(cmd: str, args=None) -> str:
+    if use_reasoning(args):
+        return LOCAL_DEFAULT_MODELS.get(cmd, REASONING_MODEL)
+    if cmd in ("agent", "rag"):
+        return TASK_MODEL
+    return LOCAL_DEFAULT_MODELS.get(cmd, TASK_MODEL)
+
+
+def print_reasoning(result) -> None:
+    """Muestra siempre el bloque de razonamiento, incluso si está vacío."""
+    message = result.get("message", {}) if isinstance(result, dict) else {}
+    thinking = message.get("thinking") or message.get("reasoning") or ""
+    text = str(thinking).strip()
+    print("RAZONAMIENTO:")
+    print(text if text else "(el modelo no devolvió texto de razonamiento)")
+
+
+# Gemma 3 solo declara 'completion': enviar think=True devuelve HTTP 400.
+# Nemotron sí declara 'thinking'. El bloque RAZONAMIENTO se muestra siempre;
+# cuando el modelo no puede pensar, se indica explícitamente.
+THINKING_MODELS = frozenset({"nemotron3:gpu", "nemotron-3-super"})
+
+
+def thinking_for(model: str | None) -> bool | None:
+    name = str(model or "").lower()
+    if name in THINKING_MODELS or "nemotron" in name or "think" in name:
+        return True
+    return None
+
 
 if LOCAL_ONLY:
     PROVIDER = "ollama"
@@ -441,8 +483,11 @@ def build_payload(args, prompt, history=None):
             "num_predict": args.max_tokens,
         },
     }
-    if not args.think:
-        payload["think"] = False
+    # El razonamiento se pide cuando el modelo lo soporta y siempre se muestra.
+    # --think queda como bandera histórica compatible, no como interruptor.
+    flag = thinking_for(args.model)
+    if flag is not None:
+        payload["think"] = flag
     if args.format:
         try:
             payload["format"] = json.loads(args.format)
@@ -613,13 +658,27 @@ def cmd_chat(args):
             args.no_stream = False
             payload = build_payload(args, user, history)
             answer = ""
+            reasoning = ""
+            shown_thinking = False
             for chunk in api_stream("/api/chat", payload):
                 if chunk.get("error"):
                     print("ERROR:", chunk["error"])
                     break
-                piece = chunk.get("message", {}).get("content", "")
+                msg = chunk.get("message", {})
+                think_piece = msg.get("thinking", "")
+                if think_piece:
+                    if not shown_thinking:
+                        print("RAZONAMIENTO:", flush=True)
+                        shown_thinking = True
+                    reasoning += think_piece
+                    print(think_piece, end="", flush=True)
+                piece = msg.get("content", "")
+                if piece and shown_thinking and not answer:
+                    print("\nRESPUESTA:", flush=True)
                 answer += piece
                 print(piece, end="", flush=True)
+            if not shown_thinking:
+                print("RAZONAMIENTO:\n(el modelo no devolvió texto de razonamiento)")
             print()
             history.append({"role": "user", "content": user})
             history.append({"role": "assistant", "content": answer})
@@ -638,6 +697,7 @@ def cmd_chat(args):
         r = api("/api/chat", payload)
         if r.get("error"):
             raise SystemExit("ERROR: " + str(r["error"]))
+        print_reasoning(r)
         answer = r["message"]["content"]
         print(answer)
         if args.stats:
@@ -645,10 +705,23 @@ def cmd_chat(args):
     else:
         answer = ""
         last = {}
+        shown_thinking = False
         for chunk in api_stream("/api/chat", payload):
-            answer += chunk.get("message", {}).get("content", "")
-            print(chunk.get("message", {}).get("content", ""), end="", flush=True)
+            msg = chunk.get("message", {})
+            think_piece = msg.get("thinking", "")
+            if think_piece:
+                if not shown_thinking:
+                    print("RAZONAMIENTO:", flush=True)
+                    shown_thinking = True
+                print(think_piece, end="", flush=True)
+            piece = msg.get("content", "")
+            if piece and shown_thinking and not answer:
+                print("\nRESPUESTA:", flush=True)
+            answer += piece
+            print(piece, end="", flush=True)
             last = chunk
+        if not shown_thinking:
+            print("RAZONAMIENTO:\n(el modelo no devolvió texto de razonamiento)")
         print()
         if args.stats:
             print_stats(last)
@@ -797,8 +870,15 @@ def cmd_act(args):
     if not text:
         raise SystemExit("Escribe la instrucción. Ej: ollama-cli.py act 'muestra la fecha'")
 
-    # Con catálogos grandes o modo libre, el Gemma 1B se confunde: usar el 4B.
-    model = args.model or ("nemotron3:gpu" if (args.free or len(catalog) > 8) else "gemma3:gpu")
+    # Perfil tareas: Gemma con JSON Schema para elegir una sola entrada del
+    # catálogo. --reasoning (o TASK_MODE=0) recupera Nemotron; --free siempre
+    # usa el modelo de respaldo porque propone comandos arbitrarios.
+    if args.model:
+        model = args.model
+    elif use_reasoning(args) or args.free:
+        model = REASONING_MODEL
+    else:
+        model = TASK_MODEL
 
     if args.free:
         fmt = {
@@ -830,7 +910,6 @@ def cmd_act(args):
     payload = {
         "model": model,
         "stream": False,
-        "think": False,
         "format": fmt,
         "messages": [
             {"role": "system", "content": system},
@@ -838,9 +917,13 @@ def cmd_act(args):
         ],
         "options": {"temperature": 0, "num_ctx": 2048, "num_predict": max_tokens},
     }
+    flag = thinking_for(model)
+    if flag is not None:
+        payload["think"] = flag
     r = api("/api/chat", payload)
     if r.get("error"):
         raise SystemExit("ERROR: " + str(r["error"]))
+    print_reasoning(r)
     content = r["message"]["content"]
     try:
         proposed = json.loads(content)["command"]
@@ -1207,9 +1290,17 @@ def cmd_config(args):
     print(f"API key: {'configurada' if API_KEY else f'no configurada ({PROVIDER_KEYVARS[PROVIDER]})'}")
     if PROVIDER in PROVIDER_DEFAULT_MODELS:
         print(f"Modelo por defecto: {PROVIDER_DEFAULT_MODELS[PROVIDER]}")
+        print("RAZONAMIENTO: siempre visible en todas las respuestas")
     else:
-        print("Modelos por defecto: chat/flow=gemma3:gpu, "
-              "razonamiento/agente/RAG=nemotron3:gpu, embeddings=qwen:gpu")
+        perfil = "TAREAS (acciones cortas)" if TASK_MODE else "RAZONAMIENTO (respaldo)"
+        print(f"PERFIL: {perfil}")
+        print("RAZONAMIENTO: siempre visible en todas las respuestas")
+        if TASK_MODE:
+            print("Modelos por defecto: tareas=gemma3:gpu, "
+                  "respaldo=nemotron3:gpu (--reasoning), embeddings=qwen:gpu")
+        else:
+            print("Modelos por defecto: chat/flow=gemma3:gpu, "
+                  "razonamiento/agente/RAG=nemotron3:gpu, embeddings=qwen:gpu")
     if EXTERNAL:
         print(f"Archivo de key: {PROVIDER_KEYFILES[PROVIDER]}")
     print(f"Overrides: {OVERRIDE}")
@@ -1511,11 +1602,12 @@ def cmd_rag_ask(args):
         "que ver con la pregunta. Cita los fragmentos con números entre corchetes, "
         "por ejemplo [1] o [2] (no escribas la letra n)."
     )
+    if not use_reasoning(args):
+        system += " Responde como una tarea: máximo 80 palabras, sin divagaciones."
     user = f"Pregunta: {question}\n\nFragmentos recuperados:\n{context}"
     payload = {
         "model": args.model,
         "stream": not args.no_stream,
-        "think": False,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -1526,6 +1618,9 @@ def cmd_rag_ask(args):
             "num_predict": args.max_tokens,
         },
     }
+    flag = thinking_for(args.model)
+    if flag is not None:
+        payload["think"] = flag
 
     print(f"modelo: {args.model} | fragmentos: {len(picked)} "
           f"({data['embedding_model']} -> chat)\n")
@@ -1533,14 +1628,29 @@ def cmd_rag_ask(args):
         r = api("/api/chat", payload)
         if r.get("error"):
             raise SystemExit("ERROR: " + str(r["error"]))
+        print_reasoning(r)
         print(r["message"]["content"])
         stats = r
     else:
         stats = {}
+        shown_thinking = False
+        answer_started = False
         for chunk in api_stream("/api/chat", payload):
-            piece = chunk.get("message", {}).get("content", "")
+            msg = chunk.get("message", {})
+            think_piece = msg.get("thinking", "")
+            if think_piece:
+                if not shown_thinking:
+                    print("RAZONAMIENTO:", flush=True)
+                    shown_thinking = True
+                print(think_piece, end="", flush=True)
+            piece = msg.get("content", "")
+            if piece and shown_thinking and not answer_started:
+                print("\nRESPUESTA:", flush=True)
+                answer_started = True
             print(piece, end="", flush=True)
             stats = chunk
+        if not shown_thinking:
+            print("RAZONAMIENTO:\n(el modelo no devolvió texto de razonamiento)")
         print()
 
     print("\nFuentes:")
@@ -1605,19 +1715,24 @@ def cmd_run(args):
         )
         if "rag" not in intents:
             system += " No hay índice RAG disponible; no elijas rag."
-        r = api("/api/chat", {
-            "model": "nemotron3:gpu",
+        router_model = REASONING_MODEL if use_reasoning(args) else TASK_MODEL
+        payload = {
+            "model": router_model,
             "stream": False,
-            "think": False,
             "format": fmt,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": text},
             ],
             "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 24},
-        })
+        }
+        flag = thinking_for(router_model)
+        if flag is not None:
+            payload["think"] = flag
+        r = api("/api/chat", payload)
         if r.get("error"):
             raise SystemExit("ERROR: " + str(r["error"]))
+        print_reasoning(r)
         try:
             obj = json.loads(r["message"]["content"])
         except (json.JSONDecodeError, KeyError, TypeError):
@@ -1638,6 +1753,7 @@ def cmd_run(args):
             text=text.split(), catalog=args.catalog, list=False,
             model=args.act_model, dry_run=args.dry_run, free=False,
             yes=False, allow_dangerous=False,
+            reasoning=getattr(args, "reasoning", False),
         )
         cmd_act(ns)
         return
@@ -1645,18 +1761,24 @@ def cmd_run(args):
     if intent == "rag":
         ns = argparse.Namespace(
             question=text.split(),
-            model=args.model or "nemotron3:gpu",
+            model=args.model or default_model_for("rag", args),
             embed_model=rag_data.get("embedding_model") or "qwen:gpu",
-            k=args.k, min_score=0.0, ctx=2048, max_tokens=384,
+            k=args.k, min_score=0.0, ctx=2048,
+            max_tokens=192 if not use_reasoning(args) else 384,
             context_chars=3600, no_stream=args.no_stream,
+            reasoning=getattr(args, "reasoning", False),
         )
         cmd_rag_ask(ns)
         return
 
     ns = argparse.Namespace(
-        prompt=text.split(), model=args.model or "gemma3:gpu",
-        system=args.system, temperature=0.3, ctx=2048, max_tokens=512,
-        think=False, no_stream=args.no_stream, stats=args.stats, format=None,
+        prompt=text.split(), model=args.model or default_model_for("chat", args),
+        system=args.system,
+        temperature=0.0 if not use_reasoning(args) else 0.3,
+        ctx=2048,
+        max_tokens=192 if not use_reasoning(args) else 512,
+        think=True, no_stream=args.no_stream, stats=args.stats, format=None,
+        reasoning=getattr(args, "reasoning", False),
     )
     cmd_chat(ns)
 
@@ -1906,7 +2028,6 @@ def agent_call(messages, args):
     payload = {
         "model": args.model,
         "stream": False,
-        "think": False,
         "messages": messages,
         "options": {
             "temperature": args.temperature,
@@ -1914,6 +2035,9 @@ def agent_call(messages, args):
             "num_predict": args.max_tokens,
         },
     }
+    flag = thinking_for(args.model)
+    if flag is not None:
+        payload["think"] = flag
     if NO_SCHEMA and not args.no_schema:
         raise SystemExit(
             f"{PROVIDER} no admite JSON Schema aquí: usa 'ocli agent' (local) u "
@@ -1924,6 +2048,7 @@ def agent_call(messages, args):
     r = api("/api/chat", payload)
     if r.get("error"):
         raise SystemExit("ERROR: " + str(r["error"]))
+    print_reasoning(r)
     content = r.get("message", {}).get("content", "")
     text = content.strip()
     if text.startswith("```"):
@@ -1966,21 +2091,30 @@ def cmd_agent(args):
             print(f"Sesión '{session}': {len(history)} mensajes recuperados.")
     undo = []
 
+    single = bool(str(getattr(args, "prompt", "") or "").strip())
     print(f"AGENTE | modelo: {args.model} | proveedor: {PROVIDER} | raíz: {root}")
-    print("Escribe una petición o /help. /exit para salir. Las escrituras y "
-          "comandos piden confirmación salvo --yes.\n")
+    if single:
+        print("TAREA ÚNICA | razonamiento visible | sin confirmaciones automáticas\n")
+    else:
+        print("Escribe una petición o /help. /exit para salir. Las escrituras y "
+              "comandos piden confirmación salvo --yes.\n")
 
     while True:
-        try:
-            line = input("ag> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
+        if single:
+            line = args.prompt.strip()
+        else:
+            try:
+                line = input("ag> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
         if not line:
+            if single:
+                break
             continue
-        if line.lower() in ("/exit", "/salir", "/quit", "salir", "exit", "quit"):
+        if not single and line.lower() in ("/exit", "/salir", "/quit", "salir", "exit", "quit"):
             break
-        if line.startswith("/"):
+        if not single and line.startswith("/"):
             parts = line.split(maxsplit=1)
             cmd = parts[0].lower()
             value = parts[1].strip() if len(parts) > 1 else ""
@@ -2032,8 +2166,8 @@ def cmd_agent(args):
             messages = [{"role": "system", "content": agent_system(root)}] + history
             decision, stats = agent_call(messages, args)
             thought = decision.get("thought")
-            if thought:
-                print(f"  · {thought}")
+            print("RAZONAMIENTO AGENTE: " +
+                  (str(thought).strip() if thought else "(sin texto de decisión)"))
             tool = decision.get("tool")
             if tool == "answer":
                 answer = str(decision.get("answer", ""))
@@ -2052,6 +2186,8 @@ def cmd_agent(args):
         if session:
             session_save(session, args.model, history, kind="agent",
                          root=str(root), no_schema=args.no_schema)
+        if single:
+            break
 
     if session:
         session_announce(session, "agent", len(history), args, root=str(root))
@@ -2132,7 +2268,6 @@ def flow_chat(system, user, args, schema=None, max_tokens=None):
     payload = {
         "model": args.model,
         "stream": False,
-        "think": False,
         "messages": messages,
         "options": {
             "temperature": args.temperature,
@@ -2140,11 +2275,15 @@ def flow_chat(system, user, args, schema=None, max_tokens=None):
             "num_predict": max_tokens or args.max_tokens,
         },
     }
+    flag = thinking_for(args.model)
+    if flag is not None:
+        payload["think"] = flag
     if schema:
         payload["format"] = schema
     r = api("/api/chat", payload, timeout=300)
     if r.get("error"):
         raise SystemExit("ERROR: " + str(r["error"]))
+    print_reasoning(r)
     return r.get("message", {}).get("content", "").strip()
 
 
@@ -2532,7 +2671,10 @@ def build_parser():
     c.add_argument("-t", "--temperature", type=float, default=0.3)
     c.add_argument("--ctx", type=int, default=2048)
     c.add_argument("--max-tokens", type=int, default=512)
-    c.add_argument("--think", action="store_true", help="permitir <think>")
+    c.add_argument("--think", action="store_true",
+                   help="obsoleto: el razonamiento siempre se pide y se muestra")
+    c.add_argument("--reasoning", action="store_true",
+                   help="usar el modelo de respaldo nemotron3:gpu")
     c.add_argument("--no-stream", action="store_true")
     c.add_argument("--stats", action="store_true")
     c.add_argument("--format", help="JSON Schema de salida")
@@ -2584,18 +2726,22 @@ def build_parser():
     cd.add_argument("--session")
     cd.set_defaults(func=cmd_code)
 
-    ag = sub.add_parser("agent", help="REPL de agente con herramientas y confirmaciones")
+    ag = sub.add_parser("agent", help="REPL de agente; --prompt ejecuta una sola tarea")
     ag.add_argument("-m", "--model", default=None,
-                    help="modelo del bucle (default: nemotron3:gpu en local, "
-                         "nvidia/nemotron-3.5-lightning-30b-a3b en NVIDIA)")
+                    help="modelo del bucle (default: gemma3:gpu en perfil tareas, "
+                         "nemotron3:gpu con --reasoning o en NVIDIA)")
+    ag.add_argument("--prompt", help="ejecuta una petición y sale (sin REPL)")
     ag.add_argument("--root", default=".", help="carpeta de trabajo (default: la actual)")
     ag.add_argument("--session", help="guardar/recuperar la conversación")
     ag.add_argument("--new-session", action="store_true", help="empezar de cero")
-    ag.add_argument("--steps", type=int, default=8, help="máximo de herramientas por petición")
+    ag.add_argument("--steps", type=int, default=4 if TASK_MODE else 8,
+                    help="máximo de herramientas por petición")
     ag.add_argument("--history", type=int, default=20, help="mensajes conservados en memoria")
     ag.add_argument("--ctx", type=int, default=2048)
-    ag.add_argument("--max-tokens", type=int, default=512)
-    ag.add_argument("-t", "--temperature", type=float, default=0.2)
+    ag.add_argument("--max-tokens", type=int, default=192 if TASK_MODE else 512)
+    ag.add_argument("-t", "--temperature", type=float, default=0.0 if TASK_MODE else 0.2)
+    ag.add_argument("--reasoning", action="store_true",
+                    help="usar el modelo de respaldo nemotron3:gpu")
     ag.add_argument("--bash-timeout", type=int, default=60,
                     help="segundos por comando de la herramienta bash")
     ag.add_argument("--yes", action="store_true",
@@ -2618,6 +2764,8 @@ def build_parser():
     a.add_argument("--allow-dangerous", action="store_true",
                    help="permitir comandos marcados como peligrosos (sigue pidiendo confirmación)")
     a.add_argument("--catalog", help="ruta a otro catálogo JSON")
+    a.add_argument("--reasoning", action="store_true",
+                   help="usar nemotron3:gpu en lugar de gemma3:gpu")
     a.set_defaults(func=cmd_act)
 
     u = sub.add_parser("run", aliases=["do"], help="enrutador: decide entre act, rag y chat")
@@ -2631,6 +2779,8 @@ def build_parser():
     u.add_argument("--stats", action="store_true")
     u.add_argument("--system", help="mensaje de sistema solo para chat")
     u.add_argument("--catalog", help="catálogo alternativo para act")
+    u.add_argument("--reasoning", action="store_true",
+                   help="usar nemotron3:gpu en el enrutador y las respuestas")
     u.set_defaults(func=cmd_run)
 
     b = sub.add_parser("bench", help="medir tokens/s")
@@ -2707,15 +2857,17 @@ def build_parser():
     rq = rs.add_parser("ask", help="recuperar fragmentos y responder")
     rq.add_argument("question", nargs="+")
     rq.add_argument("-m", "--model", default=None,
-                    help="por defecto: nemotron3:gpu en local (sintetiza mejor; "
-                         "gemma3:q4 tiende a copiar fragmentos)")
+                    help="por defecto: gemma3:gpu en perfil tareas, nemotron3:gpu "
+                         "con --reasoning (sintetiza mejor con fragmentos largos)")
     rq.add_argument("--embed-model", default="qwen:gpu")
     rq.add_argument("-k", "--top-k", dest="k", type=int, default=3)
     rq.add_argument("--min-score", type=float, default=0.0)
     rq.add_argument("--ctx", type=int, default=2048)
-    rq.add_argument("--max-tokens", type=int, default=384)
+    rq.add_argument("--max-tokens", type=int, default=192 if TASK_MODE else 384)
     rq.add_argument("--context-chars", type=int, default=3600)
     rq.add_argument("--no-stream", action="store_true")
+    rq.add_argument("--reasoning", action="store_true",
+                    help="usar nemotron3:gpu para sintetizar la respuesta")
     rq.set_defaults(func=cmd_rag_ask)
 
     rl = rs.add_parser("list", help="ver el índice actual")
@@ -2994,11 +3146,11 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
     DEBUG = getattr(args, "debug", False) or bool(os.environ.get("OLLAMA_KIT_DEBUG"))
-    if getattr(args, "model", None) is None and (
-            PROVIDER in PROVIDER_DEFAULT_MODELS
-            or getattr(args, "cmd", "") in LOCAL_DEFAULT_MODELS):
-        args.model = (PROVIDER_DEFAULT_MODELS.get(PROVIDER)
-                      or LOCAL_DEFAULT_MODELS[args.cmd])
+    if getattr(args, "model", None) is None:
+        if PROVIDER in PROVIDER_DEFAULT_MODELS:
+            args.model = PROVIDER_DEFAULT_MODELS[PROVIDER]
+        elif getattr(args, "cmd", "") in LOCAL_DEFAULT_MODELS:
+            args.model = default_model_for(args.cmd, args)
     if LOCAL_ONLY:
         for field in ("model", "models", "embed_model"):
             value = getattr(args, field, None)

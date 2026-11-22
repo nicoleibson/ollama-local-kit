@@ -9,7 +9,9 @@ en marcha; se conserva como referencia para reproducirlo tras una reinstalación
 ## TL;DR — lo que más usarás
 
 ```bash
+ocli config                               # perfil tareas y modelos por rol
 ollama run gemma3:gpu "tu pregunta"       # principal: más exactitud (7,8 tok/s)
+oagent --prompt "resume este repo"        # agente de una sola tarea, sin REPL
 ~/ollama-act.py "muestra la fecha"        # ejecutar acción (6-8 tokens)
 ~/ollama-bench.sh gemma3:gpu              # medir velocidad
 orag index /home/onion/ollama-kit.md      # indexar archivos para RAG
@@ -47,6 +49,7 @@ ollama-cli.py rag ask "cómo funciona el modo act" -k 3
 ollama-cli.py rag list
 ollama-cli.py rag clear --yes
 ollama-cli.py run "muestra la fecha"             # enrutador automático
+ollama-cli.py run --reasoning "analiza este diff" # respaldo nemotron3:gpu
 ollama-cli.py run --intent rag "qué dice el manual..."
 ollama-cli.py watch --count 5 --interval 1
 gemma4-dgpu.sh --bench                            # Gemma4 en dGPU, instancia temporal
@@ -112,7 +115,9 @@ después se usa un tag. Al importar, los pesos se copian a
 
 `qwen:gpu` no viene de esos archivos: es `Qwen3-0.6B-Base` F16, **solo embedding**
 (`/api/chat` y `/api/generate` responden `does not support`). `nemotron3:gpu` es
-Nemotron-H 4B IQ2_M, 2,6–3,6 tok/s, modelo principal de razonamiento, `act`, RAG y enrutador.
+Nemotron-H 4B IQ2_M, 2,6–3,6 tok/s, modelo de respaldo para razonamiento. Es el
+único de la tabla que declara la capacidad `thinking`; Gemma 3 solo declara
+`completion` y rechaza `think=true` con HTTP 400.
 
 Sobre `qwen35:gpu` / `qwen35:embed` (probados el 22/11/2026):
 
@@ -229,10 +234,12 @@ offloaded 27/27 layers to GPU
 **Decisión de exactitud (22/11/2026):** el principal pasa a ser `gemma3:gpu`
 (Q6_K, uncensored) en chat, `oflow`, acciones y explicaciones: es el mismo modelo
 y fine-tune que `gemma3:q4`, pero la cuantización de 6 bits conserva mejor los
-pesos que la de 4 bits. El coste es pasar de 9,3 a 7,8 tok/s. `nemotron3:gpu`
-sigue siendo el modelo de razonamiento, agente, RAG, enrutador, `code review` y
-`commit`: no hay en la carpeta ningún candidato medido que lo supere. Los
-embeddings siguen con `qwen:gpu` y Gemma 4 queda para uso puntual.
+pesos que la de 4 bits. El coste es pasar de 9,3 a 7,8 tok/s. Desde la tanda 18
+también es el modelo de agente, RAG y enrutador del **perfil tareas**;
+`nemotron3:gpu` queda como respaldo de razonamiento (`--reasoning`) y para
+`act --free`, además de `code review` y `commit`. No hay en la carpeta ningún
+candidato medido que lo supere. Los embeddings siguen con `qwen:gpu` y Gemma 4
+queda para uso puntual.
 
 ```bash
 ollama run gemma3:gpu "¿por qué el cielo es azul?"  # una pregunta
@@ -606,13 +613,15 @@ backup y se excluye del repositorio.
 ### Modo agente interactivo (`oagent`)
 
 `oagent` convierte la CLI en un REPL con herramientas, parecido a un agente de
-código, pero con permisos explícitos y sin servidor ni TUI. Arranca con
-`nemotron3:gpu` local y usa `format` + JSON Schema (no tool calling nativo), que
-es lo que mejor funciona con los modelos pequeños de este kit:
+código, pero con permisos explícitos y sin servidor ni TUI. En perfil tareas
+arranca con `gemma3:gpu` local y usa `format` + JSON Schema (no tool calling
+nativo), que es lo que mejor funciona con los modelos pequeños de este kit:
 
 ```bash
 cd ~/ollama-local-kit
-oagent                                         # raíz = directorio actual
+oagent                                         # REPL, raíz = directorio actual
+oagent --prompt "resume este repo"             # una sola tarea y salir
+oagent --reasoning --prompt "analiza este diff"  # respaldo nemotron3:gpu
 oagent --root ~/ollama-local-kit --session trabajo
 oagent -m gemma3:q4 --steps 4                  # más rápido, menos pasos
 ogemini agent --root ~/ollama-local-kit        # Gemini también admite schema
@@ -621,7 +630,11 @@ ogemini agent --root ~/ollama-local-kit        # Gemini también admite schema
 El bucle funciona así: escribes una petición, el modelo devuelve un JSON con
 `thought`, `tool`, `args` y, si ya puede responder, `answer`. La CLI ejecuta la
 herramienta, añade el resultado al historial y vuelve a llamar al modelo hasta
-que el modelo devuelve `answer` o se alcanza `--steps` (8 por defecto).
+que el modelo devuelve `answer` o se alcanza `--steps` (4 por defecto en perfil
+tareas, 8 con `--reasoning`). Cada decisión se imprime como
+`RAZONAMIENTO AGENTE:`; con `--prompt` se ejecuta una sola petición y se sale sin
+REPL. La pestaña Agente de `ogui` usa esta modalidad y nunca pasa `--yes` ni
+`--allow-dangerous`.
 
 | Herramienta | Qué hace | Permiso |
 |---|---|---|
@@ -1100,8 +1113,11 @@ Pestañas:
 | Resumen | `status`, `doctor`, `config`, `rag list` e historial de `bench` |
 | Modelos | inventario, detalle (`show`), modelos cargados y descarga con confirmación |
 | Chat | selector de modelo local, sesión opcional, `system`, `stats` y `chat --no-stream` en hilo |
-| RAG | añadir archivos/carpetas, indexar con `qwen:gpu`, preguntar con `orag ask` y limpiar el índice |
+| RAG | añadir archivos/carpetas, indexar con `qwen:gpu`, preguntar con `orag ask` (gemma3:gpu o respaldo) y limpiar el índice |
 | Acciones | subpestañas Act, Run y Code: simular, ejecutar solo entradas permitidas y preparar prompts |
+| Agente | `agent --prompt` para una sola tarea: modelo, pasos, raíz y sesión opcional; razonamiento de la decisión visible |
+| Prompts | listar, ver, guardar, borrar y usar plantillas de `~/.ollama-prompts.json` con argumentos y variables |
+| Bench | medir modelos locales, historial de `~/.ollama-bench-history.jsonl` y gráfico de barras de tok/s |
 | Sesiones | listado, mensajes, comando de reanudación y borrado con confirmación |
 | Flujos | formulario para `oflow map/slide/classify/ask` y lectura de informes |
 | Comandos | catálogo filtrable; solo entradas de solo lectura y ejecución con confirmación |
@@ -1109,9 +1125,10 @@ Pestañas:
 
 Seguridad de la ventana:
 
-- Todos los subprocess se lanzan con `OLLAMA_KIT_LOCAL=1` y se eliminan
-  `OLLAMA_HOST`, `OLLAMA_API_KEY`, `NVIDIA_API_KEY`, `GEMINI_API_KEY` y
-  `OLLAMA_KIT_PROVIDER`. Aunque haya keys guardadas, la GUI no las exporta.
+- Todos los subprocess se lanzan con `OLLAMA_KIT_LOCAL=1` y
+  `OLLAMA_KIT_TASK_MODE=1`, y se eliminan `OLLAMA_HOST`, `OLLAMA_API_KEY`,
+  `NVIDIA_API_KEY`, `GEMINI_API_KEY` y `OLLAMA_KIT_PROVIDER`. Aunque haya keys
+  guardadas, la GUI no las exporta.
 - La pestaña Comandos solo muestra una lista blanca de entradas de solo lectura.
   Quedan fuera benchmarks con inferencia, reindexado RAG, `review`, borrados,
   `stop` y copias de seguridad.
@@ -1119,6 +1136,8 @@ Seguridad de la ventana:
   Primero simula con `act --dry-run`; solo si el identificador elegido está en la
   lista blanca se habilita "Ejecutar segura". `run` solo ejecuta directamente
   las intenciones `chat` y `rag`: `act` y `automático` quedan en simulación.
+- La pestaña Agente usa siempre `agent --prompt`, sin REPL. No ofrece `--yes` ni
+  `--allow-dangerous`, y muestra el comando exacto antes de ejecutar la tarea.
 - `code` no hace commits: `commit` solo redacta el mensaje a partir del diff.
 - Descargar modelos de memoria, borrar sesiones, reindexar/borrar RAG, ejecutar
   acciones o limpiar el log pide confirmación y muestra el comando exacto.
@@ -1126,7 +1145,99 @@ Seguridad de la ventana:
   sesiones, flujos y catálogo. El chat y los flujos se ejecutan solo al pulsar
   su botón, siempre con el modelo local elegido.
 - El archivo es importable para pruebas; `python3 -m py_compile
-  ollama-kit-gui.py` y `/tmp/opencode/test-gui.py` pasan sin inferencias. La
-  prueba simula envío de chat, pregunta RAG, cancelación/aceptación de comandos,
-  borrado de sesión, simulación y ejecución segura de `act`, bloqueo de `run`
-  automático y preparación de prompts de `code`.
+  ollama-kit-gui.py` y `tests/test-gui.py` pasan sin inferencias. La prueba
+  simula envío de chat, pregunta RAG, cancelación/aceptación de comandos, borrado
+  de sesión, simulación y ejecución segura de `act`, bloqueo de `run` automático,
+  preparación de prompts de `code`, tarea única del agente, guardado/uso de
+  plantillas y medición de `bench`. Ver sección 18.
+
+---
+
+## 18. Perfil de tareas, razonamiento visible y pruebas
+
+### Perfil de tareas
+
+Desde la tanda 18 el modo habitual es **perfil tareas**, no conversación larga.
+La idea es pedir acciones cortas y verificables, con el contexto fijo de 2048
+tokens de esta máquina. `OLLAMA_KIT_TASK_MODE=1` (valor por defecto) activa estos
+defaults:
+
+| Rol | Modelo | Cambio con `--reasoning` o `OLLAMA_KIT_TASK_MODE=0` |
+|---|---|---|
+| `chat`, `ask`, `run`, `act`, agente, RAG, `flow`/`oflow` | `gemma3:gpu` | `nemotron3:gpu` en agente y RAG |
+| Respaldo de razonamiento | `nemotron3:gpu` | es el modelo elegido con `--reasoning` |
+| Embeddings | `qwen:gpu` | sin cambios |
+
+Los prompts de RAG y `run` añaden una instrucción de longitud acotada (~80
+palabras) y las respuestas usan temperatura 0 y `--max-tokens` más bajo en perfil
+tareas. El enrutador y el agente reducen también el número de pasos. `ocli
+config` muestra el perfil activo:
+
+```bash
+ocli config
+# PERFIL: TAREAS (acciones cortas)
+# RAZONAMIENTO: siempre visible en todas las respuestas
+# Modelos por defecto: tareas=gemma3:gpu, respaldo=nemotron3:gpu (--reasoning), embeddings=qwen:gpu
+```
+
+Para volver al comportamiento anterior sin tocar cada comando:
+
+```bash
+OLLAMA_KIT_TASK_MODE=0 ocli chat "explica esto"
+oagent --reasoning --prompt "analiza este diff"
+```
+
+### Razonamiento siempre visible
+
+Toda respuesta de `chat`, `act`, `run`, RAG, agente y flujos empieza por un bloque
+`RAZONAMIENTO:`. En streaming, el texto `thinking` se imprime en cuanto llega y
+después aparece `RESPUESTA:`; si el modelo no devuelve texto de razonamiento, se
+escribe `(el modelo no devolvió texto de razonamiento)`. En el agente, la decisión
+se muestra como `RAZONAMIENTO AGENTE:`, aunque el campo `thought` esté vacío.
+
+`think` **no se envía a ciegas**. `gemma3:gpu` declara solo la capacidad
+`completion` y responde `HTTP 400: "gemma3:gpu" does not support thinking` si se
+le envía `think=true`; `nemotron3:gpu` declara `completion`, `tools` y `thinking`.
+La función `thinking_for(modelo)` decide el valor del parámetro: `true` para
+modelos que declaran `thinking` y ausencia de clave para el resto. `--think`
+sigue aceptándose por compatibilidad, pero ya no desactiva nada.
+
+Comprobación local, sin créditos ni API keys:
+
+```bash
+python3 ~/ollama-cli.py show gemma3:gpu     # Capabilities: completion
+python3 ~/ollama-cli.py show nemotron3:gpu  # Capabilities: completion, tools, thinking
+```
+
+### Pruebas versionadas
+
+Las pruebas están en `tests/` y sustituyen a los antiguos scripts temporales de
+`/tmp/opencode`. Ninguna hace inferencias: parchean `api()`, `api_stream()`,
+`run_process_text()` y los cuadros de diálogo de Tkinter, o cargan la CLI con
+variables de entorno aisladas.
+
+| Prueba | Cubre |
+|---|---|
+| `test-agent.py` | herramientas del agente, confirmaciones y `/undo` |
+| `test-flow.py` | `map`/`slide`/`classify`/`ask`, JSON Schema y reanudación |
+| `test-free.py` | `ofree` ignora keys y traduce modelos cloud |
+| `test-gui.py` | entorno local, argv, parseo y 12 pestañas de Tkinter |
+| `test-ninth.py` | proveedores local/cloud/NVIDIA/Gemini y normalización de API |
+| `test-nvidia-default.py` | defaults por proveedor y `--reasoning` |
+| `test-session.py` | sesiones persistentes y comandos de reanudación |
+| `test-task.py` | perfil tareas, defaults, razonamiento visible y agente de una sola petición |
+
+```bash
+for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
+bash ~/ollama-scripts/selftest.sh
+# [1/6] sintaxis CLI · [2/6] scripts · [3/6] catálogo · [4/6] índice RAG
+# [5/6] doctor · [6/6] pruebas versionadas → SELFTEST OK
+```
+
+`selftest.sh` lee las pruebas desde `~/ollama-local-kit/tests` por defecto;
+`OLLAMA_KIT_TESTS=/otra/ruta/tests` permite cambiar la ubicación sin copiar los
+archivos al directorio de scripts. La revisión visual de `ogui` no pudo hacerse
+en este entorno porque las tres vías de captura disponibles (`import`,
+`ffmpeg x11grab` y `PIL.ImageGrab`) devolvieron una imagen negra; la comprobación
+se hizo por introspección de Tkinter: 12 pestañas, geometría y widgets presentes,
+sin excepciones.

@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-11-22 (decimoctava tanda)
+
+- **Perfil de tareas por defecto**: `gemma3:gpu` atiende `chat`, `act`, `run`,
+  agente, RAG y flujos con instrucciones cortas y verificables. `nemotron3:gpu`
+  queda como respaldo de razonamiento vía `--reasoning` o
+  `OLLAMA_KIT_TASK_MODE=0`; `qwen:gpu` sigue en embeddings. `ocli config` muestra
+  el perfil y los modelos por rol.
+- **Razonamiento siempre visible**: toda respuesta imprime `RAZONAMIENTO:` y el
+  texto `thinking` cuando existe, o `(el modelo no devolvió texto de
+  razonamiento)` si el modelo no lo devuelve. El parámetro `think` solo se envía
+  a modelos con capacidad `thinking`: Gemma 3 rechazaba `think=true` con HTTP
+  400. `--think` queda como bandera histórica compatible.
+- `agent --prompt` ejecuta **una sola tarea y sale** (sin REPL) e imprime
+  `RAZONAMIENTO AGENTE:`. En perfil tareas usa 4 pasos y `gemma3:gpu` por defecto.
+- `ogui` pasa a **doce pestañas**: nuevas **Agente** (tarea única, sin `--yes` ni
+  `--allow-dangerous`), **Prompts** (biblioteca de plantillas) y **Bench**
+  (mediciones locales con gráfico de barras). Fuerza también
+  `OLLAMA_KIT_TASK_MODE=1` en los subprocess.
+- Pruebas versionadas en `tests/`: ocho archivos sin inferencias que simulan API,
+  subprocess y Tkinter, incluida `test-task.py` (perfil, defaults, razonamiento
+  visible y agente de una sola petición). `ollama-scripts/selftest.sh` pasa a 6
+  pasos y ejecuta todo el conjunto desde el repo.
+- Corregido el error real `HTTP 400: "gemma3:gpu" does not support thinking`
+  detectado al probar el perfil con inferencia local. Actualizados manual
+  (secciones 17 y 18 nueva), README, INSTALL e índice RAG. No se usaron APIs de
+  pago.
+
 ## 2026-11-22 (decimoséptima tanda)
 
 - La ventana `ogui` pasa a nueve pestañas: nuevas **RAG** (añadir
