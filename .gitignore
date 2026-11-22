@@ -23,6 +23,7 @@ Backups.Ollama/
 .env
 .env.*
 *.local
+.ollama-cloud-key
 
 # Editor / sistema
 .vscode/

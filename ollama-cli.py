@@ -19,7 +19,27 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+CLOUD_HOST = "https://ollama.com"
+API_KEY = os.environ.get("OLLAMA_API_KEY", "").strip()
+# Con OLLAMA_HOST explícito manda ese valor; si solo hay API key, se usa ollama.com.
+HOST = os.environ.get("OLLAMA_HOST") or (CLOUD_HOST if API_KEY else "http://127.0.0.1:11434")
+HOST = HOST.rstrip("/")
+CLOUD_MODE = "ollama.com" in HOST
+
+
+def api_headers():
+    headers = {"Content-Type": "application/json"}
+    if CLOUD_MODE and API_KEY:
+        headers["Authorization"] = f"Bearer {API_KEY}"
+    return headers
+
+
+def http_detail(code, body):
+    detail = body[:300]
+    if CLOUD_MODE and code in (401, 402, 403, 429):
+        detail += (" | Revisa OLLAMA_API_KEY y el plan/créditos en "
+                   "https://ollama.com/settings/keys")
+    return detail
 OVERRIDE = Path("/etc/systemd/system/ollama.service.d/override.conf")
 MODELS_DIR = Path("/home/onion/Documentos/ModelsIA")
 SESSIONS_DIR = Path.home() / ".ollama-sessions"
@@ -107,8 +127,7 @@ def debug_log(event, **fields):
 def api(path, payload=None, method=None, timeout=300):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(
-        HOST + path, data=data, method=method,
-        headers={"Content-Type": "application/json"},
+        HOST + path, data=data, method=method, headers=api_headers(),
     )
     started = time.time()
     try:
@@ -117,13 +136,13 @@ def api(path, payload=None, method=None, timeout=300):
             status = resp.status
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
-        debug_log("api_error", path=path, code=e.code, body=body[:800],
+        debug_log("api_error", host=HOST, path=path, code=e.code, body=body[:800],
                   seconds=round(time.time() - started, 3))
-        raise SystemExit(f"HTTP {e.code} en {path}: {body[:300]}")
+        raise SystemExit(f"HTTP {e.code} en {path}: {http_detail(e.code, body)}")
     except urllib.error.URLError as e:
-        debug_log("api_error", path=path, reason=str(e.reason))
+        debug_log("api_error", host=HOST, path=path, reason=str(e.reason))
         raise SystemExit(f"No se puede conectar con {HOST}{path}: {e.reason}")
-    debug_log("api", path=path, status=status, bytes=len(raw),
+    debug_log("api", host=HOST, path=path, status=status, bytes=len(raw),
               seconds=round(time.time() - started, 3))
     return json.loads(raw) if raw else {}
 
@@ -131,7 +150,7 @@ def api(path, payload=None, method=None, timeout=300):
 def api_stream(path, payload, timeout=300):
     data = json.dumps(payload).encode()
     req = urllib.request.Request(
-        HOST + path, data=data, headers={"Content-Type": "application/json"}
+        HOST + path, data=data, headers=api_headers()
     )
     started = time.time()
     try:
@@ -145,12 +164,12 @@ def api_stream(path, payload, timeout=300):
                     break
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
-        debug_log("api_error", path=path, code=e.code, body=body[:800])
-        raise SystemExit(f"HTTP {e.code} en {path}: {body[:300]}")
+        debug_log("api_error", host=HOST, path=path, code=e.code, body=body[:800])
+        raise SystemExit(f"HTTP {e.code} en {path}: {http_detail(e.code, body)}")
     except urllib.error.URLError as e:
-        debug_log("api_error", path=path, reason=str(e.reason))
+        debug_log("api_error", host=HOST, path=path, reason=str(e.reason))
         raise SystemExit(f"No se puede conectar con {HOST}{path}: {e.reason}")
-    debug_log("api", path=path, status=200, stream=True,
+    debug_log("api", host=HOST, path=path, status=200, stream=True,
               seconds=round(time.time() - started, 3))
 
 
@@ -471,6 +490,11 @@ def act_is_dangerous(command):
 
 
 def cmd_act(args):
+    if CLOUD_MODE:
+        raise SystemExit(
+            "act usa JSON Schema y los modelos cloud no lo soportan. "
+            "Usa 'ocli act ...' (local) o 'ocloud chat ...'."
+        )
     catalog = load_catalog(args.catalog)
     if args.list:
         print(f"Catálogo: {args.catalog or CATALOG_PATH}  ({len(catalog)} entradas)")
@@ -864,7 +888,9 @@ def cmd_embed(args):
 
 
 def cmd_config(args):
+    print(f"MODO: {'CLOUD (API key directa)' if CLOUD_MODE else 'LOCAL (Ollama en este equipo)'}")
     print(f"HOST: {HOST}")
+    print(f"API key: {'configurada' if API_KEY else 'no configurada (OLLAMA_API_KEY)'}")
     print(f"Overrides: {OVERRIDE}")
     print(f"Carpeta GGUF: {MODELS_DIR}")
     print("\nVariables activas:")
@@ -886,6 +912,11 @@ def cmd_config(args):
     print("  odgpu  -> ollama-scripts/gemma4-dgpu.sh (R7 260X aislada)")
     print("  ocode  -> ollama-cli.py code")
     print("  odebug -> ollama-cli.py debug")
+    print("  ocloud -> ollama-cli.py contra ollama.com (lee ~/.ollama-cloud-key)")
+    if CLOUD_MODE:
+        print("\nNota: ocloud habla con la API de ollama.com; no toca el override local.")
+        print("Los modelos cloud no soportan structured outputs: act no está disponible")
+        print("y code necesita --no-schema.")
 
 
 # ---------------------------------------------------------------------------
@@ -1613,6 +1644,11 @@ CODE_ACTIONS = {
 
 
 def cmd_code(args):
+    if CLOUD_MODE and not args.no_schema:
+        raise SystemExit(
+            "Los modelos cloud no soportan JSON Schema. Añade --no-schema "
+            "o usa 'ocode' (local) para salida estructurada."
+        )
     info = CODE_ACTIONS[args.action]
     chunks = []
 

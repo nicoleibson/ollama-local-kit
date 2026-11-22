@@ -203,6 +203,17 @@ ocli code review ~/ollama-cli.py --lines 20 --dry-run
 ocode tests "def suma(a,b): return a+b" --no-stream
 bash ~/ollama-scripts/selftest.sh
 odebug -n 5
+ocli config                                   # debe decir MODO: LOCAL
+```
+
+Opcional, solo si tienes cuenta en ollama.com con créditos:
+
+```bash
+printf 'TU_API_KEY' > ~/.ollama-cloud-key
+chmod 600 ~/.ollama-cloud-key
+ocloud config                                 # debe decir MODO: CLOUD
+ocloud list                                   # catálogo cloud
+# ocloud chat -m glm-5.3 "hola"               # consume créditos
 ```
 
 `ocli doctor` debe terminar con **TODO CORRECTO**. El único aviso habitual es
@@ -226,6 +237,7 @@ rm -f ~/ollama-cli.py ~/ollama-bench.sh ~/ollama-act.py \
       ~/ollama-commands.json ~/ollama-kit.md
 rm -rf ~/ollama-scripts ~/.ollama-rag ~/.ollama-sessions
 rm -f ~/.ollama-prompts.json ~/.ollama-bench-history.jsonl ~/.ollama-debug.log
+rm -f ~/.ollama-cloud-key
 ```
 
 Después elimina el bloque `>>> ollama-cli personal >>>` de `~/.bashrc` y recarga la

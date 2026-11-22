@@ -76,6 +76,8 @@ odgpu "explica la dispersión de Rayleigh"      # Gemma4 en dGPU aislada
 ocode review archivo.py --dry-run              # prompt y schema sin llamar al modelo
 ocode tests archivo.py                        # tests unitarios con JSON Schema
 odebug -n 5                                   # últimos errores y eventos
+ocloud list                                   # modelos cloud (necesita API key)
+ocloud chat -m glm-5.3 "revisa este diff"     # nube bajo demanda
 ochat --session proyecto "hola"               # conversación persistente
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
@@ -110,6 +112,15 @@ y `orag ask "..."`; para ejecutar comprobaciones, `oact "run_tests"` o
 Los comandos de `act` muestran `[->]`, duración y `[OK]`/`[X] exit N`. Todo queda en
 `~/.ollama-debug.log`: `odebug` resume, `odebug --full` muestra tracebacks y
 `ocli --debug ...` añade trazas en directo. Ver manual, sección 9.
+
+## Nube bajo demanda
+
+`ocloud` es la misma CLI apuntando a `https://ollama.com` con una API key de
+`~/.ollama-cloud-key` (chmod 600). `ocli` sigue siendo local por defecto y el
+override con `OLLAMA_NO_CLOUD=true` no se toca. Los modelos cloud no soportan
+JSON Schema: ahí `act` está bloqueado y `code` requiere `--no-schema`. Para
+desarrollar, `glm-5.3` y `kimi-k2.7-code` son la referencia; baja el resultado a
+prompts y RAG locales para iterar sin coste. Ver manual, sección 11.
 
 ## Seguridad
 

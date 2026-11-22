@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-22 (octava tanda)
+
+- Soporte de API key directa para modelos cloud: `OLLAMA_API_KEY` añade el
+  header Bearer y selecciona `https://ollama.com` cuando no hay `OLLAMA_HOST`
+  explícito. `api()` y `api_stream()` registran el host en el log de debug.
+- Nuevo prefijo `ocloud` (lee `~/.ollama-cloud-key`, chmod 600) con autocompletado.
+  `ocli` sigue local y el override con `OLLAMA_NO_CLOUD=true` permanece intacto.
+- `act` se bloquea en cloud y `code` exige `--no-schema`: los modelos cloud no
+  soportan structured outputs. Errores 401/402/403/429 dan pista sobre la key.
+- `config` muestra MODO, HOST y estado de la key. Manual, README, INSTALL y
+  `.gitignore` actualizados con el flujo cloud→local y los modelos recomendados.
+
 ## 2026-11-22 (séptima tanda)
 
 - Nuevo subcomando `code` (alias `ocode`) con `review`, `tests`, `explain` y `commit`:

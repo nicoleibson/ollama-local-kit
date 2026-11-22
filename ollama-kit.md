@@ -223,6 +223,7 @@ offloaded 27/27 layers to GPU
 | Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; `gemma3:q4` copia fragmentos |
 | Probar Gemma 4 en la R7 260X | `odgpu` → `gemma4:dgpu` | 8,5 tok/s, instancia aislada; no cambia el default |
 | Probar Gemma 4 en CPU | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
+| Código/razonamiento muy largo | `ocloud` → `glm-5.3`, `kimi-k2.7-code` | nube bajo demanda, sin VRAM; consume créditos |
 
 ```bash
 ollama run gemma3:q4 "¿por qué el cielo es azul?"   # una pregunta
@@ -673,6 +674,60 @@ curl -s http://127.0.0.1:11434/api/chat \
 curl -s http://127.0.0.1:11434/api/embed \
   -d '{"model":"qwen:gpu","input":"texto a vectorizar"}' | head -c 200
 ```
+
+### Modo nube con API key (`ocloud`)
+
+El servicio local sigue con `OLLAMA_NO_CLOUD=true`. Para usar modelos de servidor
+sin tocar el override, la CLI habla directamente con `https://ollama.com` cuando
+encuentra `OLLAMA_API_KEY`:
+
+```bash
+# 1) Crea una key en https://ollama.com/settings/keys
+# 2) Pégala en un archivo de un solo usuario:
+printf 'TU_API_KEY' > ~/.ollama-cloud-key
+chmod 600 ~/.ollama-cloud-key
+
+# 3) Alterna con un prefijo, sin cambiar nada del servicio local:
+ocloud config                                  # MODO: CLOUD
+ocloud list                                    # catálogo de modelos cloud
+ocloud chat -m glm-5.3 "revisa este diff"
+ocloud chat -m gemma4:31b --no-stream "explica..."
+ocli chat -m nemotron3:gpu "hola"              # vuelve al local
+```
+
+`ocli` y `ocode` siguen yendo a tu iGPU. La key no se guarda en el repo, en los
+logs ni en los backups; `~/.ollama-cloud-key` está en `.gitignore`.
+
+**Nombres:** en la API directa se usa el nombre real (`gemma4:31b`), no el
+sufijo `:cloud` que se usa desde la app/CLI de Ollama.
+
+**Límites:** los modelos cloud no soportan structured outputs. `act` está
+bloqueado en modo cloud y `code` exige `--no-schema`. Los prompts se procesan en
+la nube (según Ollama, no se usan para entrenar) y consumen créditos del plan.
+
+**Modelos cloud para desarrollo** (catálogo consultado el 2026-11-22):
+
+| Modelo | Para qué | Contexto |
+|---|---|---|
+| `glm-5.3` | Referencia para código y tareas agénticas largas; el más capaz para desarrollar | 1M |
+| `kimi-k2.7-code` | Enfocado en código, ~30 % menos tokens de razonamiento; mejor coste | 256K |
+| `beam` | Eficiente en tokens, bueno para iterar sin disparar el coste | 1M |
+| `deepseek-v4.1-flash` | Respuestas rápidas y mucho throughput; tareas cortas y baratas | 1M |
+| `gemma4:31b` | Misma familia que tus `gemma4:cpu`/`:dgpu`; útil para comparar local vs nube | 256K |
+| `nemotron-3-super` | 120B MoE (12B activos), alto rendimiento por coste | 256K |
+| `kimi-k3.1-pro`, `hy4`, `mimo-v2.6-pro` | Reserva para arquitectura crítica; son de los más caros | 1M |
+| `clef:27b` | Clasificación y decisiones sí/no; **no** es para programar | 125K |
+
+**Flujo recomendado para optimizar coste y calidad:**
+
+1. **Pensar en cloud:** `glm-5.3` o `kimi-k2.7-code` para arquitectura, revisión
+   de diffs grandes, generación de tests y explicación de repos completos.
+2. **Fijar el conocimiento en local:** guarda las decisiones con
+   `ocli prompt add ...` e indexa el repo con `orag index DIRECTORIO`.
+3. **Iterar en local:** `nemotron3:gpu` para revisar, `gemma3:q4` para
+   tests/explicaciones y `odgpu` para generación larga puntual.
+4. **Volver a cloud solo cuando el local se quede corto** por contexto o
+   razonamiento. Así el gasto se limita a la fase de diseño.
 
 ---
 
