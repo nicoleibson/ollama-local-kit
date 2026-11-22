@@ -156,6 +156,7 @@ SESSIONS_DIR = Path.home() / ".ollama-sessions"
 PROMPTS_PATH = Path.home() / ".ollama-prompts.json"
 BENCH_HISTORY = Path.home() / ".ollama-bench-history.jsonl"
 DEBUG_LOG = Path.home() / ".ollama-debug.log"
+UNDO_DIR = Path.home() / ".ollama-agent-undo"
 DEBUG = False
 
 INFO = {
@@ -1107,6 +1108,7 @@ def cmd_config(args):
     print("  ocloud  -> ollama-cli.py contra ollama.com (lee ~/.ollama-cloud-key)")
     print("  onvidia -> ollama-cli.py contra NVIDIA NIM (lee ~/.nvidia-api-key)")
     print("  ogemini -> ollama-cli.py contra Gemini (lee ~/.gemini-api-key)")
+    print("  oagent  -> ollama-cli.py agent (REPL con herramientas)")
     if EXTERNAL:
         print(f"\nNota: {PROVIDER} habla con la API remota; no toca el override local.")
         if NO_SCHEMA:
@@ -1528,6 +1530,397 @@ def cmd_run(args):
     cmd_chat(ns)
 
 
+# ---------------------------------------------------------------------------
+# Agente interactivo: bucle REPL con herramientas y confirmaciones
+# ---------------------------------------------------------------------------
+
+AGENT_BLOCKED = {
+    ".git", ".ollama-rag", ".ollama-sessions", ".ollama-agent-undo",
+    ".ollama-cloud-key", ".nvidia-api-key", ".gemini-api-key",
+    ".env", "id_ed25519", "id_ed25519.pub",
+}
+AGENT_TOOL_NAMES = ("answer", "read", "list", "grep", "rag", "write", "edit", "bash")
+
+
+def agent_schema():
+    return {
+        "type": "object",
+        "properties": {
+            "thought": {"type": "string",
+                        "description": "Razonamiento breve en español, una frase"},
+            "tool": {"type": "string", "enum": list(AGENT_TOOL_NAMES)},
+            "args": {"type": "object",
+                     "description": "Argumentos de la herramienta; vacío para answer"},
+            "answer": {"type": "string",
+                       "description": "Respuesta final, solo cuando tool=answer"},
+        },
+        "required": ["tool"],
+    }
+
+
+def agent_system(root):
+    return (
+        "Eres un agente de programación en una terminal. Trabajas SOLO dentro de "
+        f"{root}. Devuelve SOLO un objeto JSON, sin markdown ni texto fuera del JSON, "
+        "con esta forma: {\"thought\":\"frase breve\",\"tool\":\"...\",\"args\":{...},\"answer\":\"...\"}. "
+        "Elige tool=answer para responder; para write, edit o bash el usuario deberá "
+        "confirmar antes de ejecutar. Usa read/list/grep/rag para investigar antes de "
+        "modificar nada. Args por herramienta: "
+        "read {path, start?, lines?}; list {path?}; grep {pattern, path?, max?}; "
+        "rag {query, k?}; write {path, content}; edit {path, old, new}; "
+        "bash {command}. No propongas rutas absolutas ni que salgan de la carpeta de trabajo."
+    )
+
+
+def agent_resolve(root, value, must_exist=False):
+    if not isinstance(value, str) or not value.strip():
+        raise SystemExit("La herramienta necesita una ruta ('path').")
+    p = Path(value)
+    if p.is_absolute() or ".." in p.parts:
+        raise SystemExit(f"Ruta no permitida fuera del área de trabajo: {value}")
+    target = (root / p).resolve()
+    if target != root and root not in target.parents:
+        raise SystemExit(f"Ruta no permitida fuera del área de trabajo: {value}")
+    if any(part in AGENT_BLOCKED for part in target.relative_to(root).parts):
+        raise SystemExit(f"Ruta bloqueada (secreto o control interno): {value}")
+    if must_exist and not target.exists():
+        raise SystemExit(f"No existe: {target}")
+    return target
+
+
+def agent_read(root, a):
+    path = agent_resolve(root, a.get("path"), must_exist=True)
+    if not path.is_file():
+        raise SystemExit(f"No es un archivo: {path}")
+    lines = path.read_text(errors="replace").splitlines()
+    start = max(1, int(a.get("start", 1)))
+    end = min(len(lines), start + max(1, int(a.get("lines", 200))) - 1)
+    body = "\n".join(f"{i:>5} | {lines[i-1]}" for i in range(start, end + 1))
+    return f"{path.relative_to(root)}:{start}-{end} de {len(lines)}\n{body}"
+
+
+def agent_list(root, a):
+    path = agent_resolve(root, a.get("path", "."), must_exist=True)
+    if not path.is_dir():
+        raise SystemExit(f"No es una carpeta: {path}")
+    rows = []
+    for item in sorted(path.iterdir(), key=lambda x: x.name.lower()):
+        if item.name in AGENT_BLOCKED or item.name.startswith(".ollama-"):
+            continue
+        kind = "dir" if item.is_dir() else "file"
+        size = "" if item.is_dir() else str(item.stat().st_size)
+        rows.append(f"{kind:<4} {size:>9} {item.name}")
+    return f"{path.relative_to(root)}\n" + "\n".join(rows[:100])
+
+
+def agent_grep(root, a):
+    pattern = a.get("pattern")
+    if not isinstance(pattern, str) or not pattern:
+        raise SystemExit("La herramienta grep necesita 'pattern'.")
+    regex = re.compile(pattern, re.IGNORECASE)
+    start = agent_resolve(root, a.get("path", "."), must_exist=True)
+    files = [start] if start.is_file() else start.rglob("*")
+    hits = []
+    for path in files:
+        if not path.is_file() or path.stat().st_size > 1_000_000:
+            continue
+        if any(part in AGENT_BLOCKED for part in path.relative_to(root).parts):
+            continue
+        try:
+            for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+                if regex.search(line):
+                    hits.append(f"{path.relative_to(root)}:{number}: {line.strip()[:200]}")
+                    if len(hits) >= int(a.get("max", 30)):
+                        return "\n".join(hits)
+        except OSError:
+            continue
+    return "\n".join(hits) if hits else "(sin coincidencias)"
+
+
+def agent_rag(root, a):
+    query = a.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise SystemExit("La herramienta rag necesita 'query'.")
+    data = rag_load()
+    if not data["chunks"]:
+        raise SystemExit("Índice RAG vacío. Usa: ocli rag index ARCHIVO|DIR")
+    model = data.get("embedding_model") or "qwen:gpu"
+    vector = rag_embed([query], model)[0]
+    idf = rag_idf(data["chunks"])
+    scored = []
+    for chunk in data["chunks"]:
+        score = rag_cosine(vector, chunk["vector"]) + 0.5 * rag_lexical(query, chunk, idf)
+        scored.append((score, chunk))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    picked = []
+    for score, chunk in scored:
+        if any(chunk["path"] == c["path"]
+               and abs(chunk["start"] - c["start"]) < data.get("chunk_chars", 900) // 2
+               for _, c in picked):
+            continue
+        picked.append((score, chunk))
+        if len(picked) >= int(a.get("k", 3)):
+            break
+    blocks = [f"[{i}] {c['path']}\n{c['text'][:1200]}" for i, (_, c) in enumerate(picked, 1)]
+    return "\n\n".join(blocks) if blocks else "(sin resultados en el índice)"
+
+
+def agent_confirm(args, what):
+    if args.yes:
+        return True
+    try:
+        answer = input(f"¿Permitir {what}? [s/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer in ("s", "si", "y", "yes")
+
+
+def agent_backup(path):
+    UNDO_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}"
+    backup = UNDO_DIR / f"{stamp}-{re.sub(r'[^a-zA-Z0-9_.-]+', '-', path.name)[:60]}"
+    shutil.copy2(path, backup)
+    return backup
+
+
+def agent_write(root, a, args, undo):
+    path = agent_resolve(root, a.get("path"))
+    content = a.get("content")
+    if not isinstance(content, str):
+        raise SystemExit("La herramienta write necesita 'content' como texto.")
+    if len(content) > 20_000:
+        raise SystemExit("Contenido demasiado grande (máx. 20000 caracteres por llamada).")
+    existed = path.exists()
+    if existed:
+        old = path.read_text(errors="replace")
+        if old == content:
+            return "Sin cambios: el archivo ya tiene ese contenido."
+    if not agent_confirm(args, f"escribir {path.relative_to(root)}"):
+        return "Cancelado por el usuario."
+    backup = agent_backup(path) if existed else None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    undo.append((path, backup))
+    return f"Escrito {path.relative_to(root)} ({len(content)} chars)."
+
+
+def agent_edit(root, a, args, undo):
+    path = agent_resolve(root, a.get("path"), must_exist=True)
+    old, new = a.get("old"), a.get("new")
+    if not isinstance(old, str) or not isinstance(new, str) or not old:
+        raise SystemExit("La herramienta edit necesita 'old' y 'new' como texto.")
+    text = path.read_text(errors="replace")
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"El texto a reemplazar aparece {count} veces; amplía 'old' para que sea único.")
+    preview = f"{old[:120]!r} -> {new[:120]!r}"
+    if not agent_confirm(args, f"editar {path.relative_to(root)} ({preview})"):
+        return "Cancelado por el usuario."
+    undo.append((path, agent_backup(path)))
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    return f"Editado {path.relative_to(root)}."
+
+
+def agent_bash(root, a, args):
+    command = a.get("command")
+    if not isinstance(command, str) or not command.strip():
+        raise SystemExit("La herramienta bash necesita 'command'.")
+    command = command.strip().strip("`")
+    first = command.split()[0]
+    if not shutil.which(first):
+        raise SystemExit(f"'{first}' no es un comando instalado.")
+    danger = act_is_dangerous(command)
+    if danger and not args.allow_dangerous:
+        raise SystemExit("Comando bloqueado por peligroso. Usa --allow-dangerous si estás seguro.")
+    flag = " [PELIGROSO]" if danger else ""
+    if not agent_confirm(args, f"ejecutar '{command[:120]}'{flag}"):
+        return "Cancelado por el usuario."
+    rc = run_visible(command, timeout=args.bash_timeout)
+    return f"Comando terminado con código {rc}."
+
+
+def agent_undo(undo):
+    if not undo:
+        return "No hay cambios para deshacer."
+    path, backup = undo.pop()
+    if backup and Path(backup).is_file():
+        shutil.copy2(backup, path)
+        return f"Restaurado {path} desde copia de seguridad."
+    if path.exists():
+        path.unlink()
+        return f"Eliminado el archivo creado {path}."
+    return f"No había copia de {path}."
+
+
+def agent_run_tool(tool, a, args, root, undo):
+    a = a if isinstance(a, dict) else {}
+    if tool == "read":
+        return agent_read(root, a)
+    if tool == "list":
+        return agent_list(root, a)
+    if tool == "grep":
+        return agent_grep(root, a)
+    if tool == "rag":
+        return agent_rag(root, a)
+    if tool == "write":
+        return agent_write(root, a, args, undo)
+    if tool == "edit":
+        return agent_edit(root, a, args, undo)
+    if tool == "bash":
+        return agent_bash(root, a, args)
+    raise SystemExit(f"Herramienta no admitida: {tool}")
+
+
+def agent_call(messages, args):
+    payload = {
+        "model": args.model,
+        "stream": False,
+        "think": False,
+        "messages": messages,
+        "options": {
+            "temperature": args.temperature,
+            "num_ctx": args.ctx,
+            "num_predict": args.max_tokens,
+        },
+    }
+    if NO_SCHEMA and not args.no_schema:
+        raise SystemExit(
+            f"{PROVIDER} no admite JSON Schema aquí: usa 'ocli agent' (local) u "
+            "'ogemini agent', o añade --no-schema para parsear JSON del texto."
+        )
+    if not (NO_SCHEMA and args.no_schema):
+        payload["format"] = agent_schema()
+    r = api("/api/chat", payload)
+    if r.get("error"):
+        raise SystemExit("ERROR: " + str(r["error"]))
+    content = r.get("message", {}).get("content", "")
+    text = content.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[^\n]*\n?", "", text)
+        text = re.sub(r"```$", "", text).strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.S)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                data = None
+        else:
+            data = None
+        if not isinstance(data, dict):
+            raise SystemExit("El agente no devolvió un JSON válido: " + repr(content[:300]))
+    if data.get("tool") not in AGENT_TOOL_NAMES:
+        raise SystemExit(f"El agente eligió una herramienta desconocida: {data.get('tool')!r}")
+    return data, r
+
+
+def cmd_agent(args):
+    if NO_SCHEMA and not args.no_schema:
+        raise SystemExit(
+            f"El modo agente usa JSON Schema y {PROVIDER} no lo admite aquí. "
+            "Usa 'oagent' (local), 'ogemini agent' o añade --no-schema."
+        )
+    root = Path(args.root).expanduser().resolve()
+    if not root.is_dir():
+        raise SystemExit(f"La carpeta de trabajo no existe: {root}")
+
+    history = []
+    session = getattr(args, "session", None)
+    if session and not args.new_session:
+        saved = session_load(session)
+        history = [m for m in saved["messages"] if m.get("role") != "system"]
+        if history:
+            print(f"Sesión '{session}': {len(history)} mensajes recuperados.")
+    undo = []
+
+    print(f"AGENTE | modelo: {args.model} | proveedor: {PROVIDER} | raíz: {root}")
+    print("Escribe una petición o /help. /exit para salir. Las escrituras y "
+          "comandos piden confirmación salvo --yes.\n")
+
+    while True:
+        try:
+            line = input("ag> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not line:
+            continue
+        if line.lower() in ("/exit", "/salir", "/quit", "salir", "exit", "quit"):
+            break
+        if line.startswith("/"):
+            parts = line.split(maxsplit=1)
+            cmd = parts[0].lower()
+            value = parts[1].strip() if len(parts) > 1 else ""
+            if cmd in ("/help", "/?"):
+                print("/help  /model NAME  /provider  /session NAME  /clear  /root PATH")
+                print("/tools  /rag PREGUNTA  /bash COMANDO  /undo  /yes  /exit")
+            elif cmd == "/model" and value:
+                args.model = value
+                print(f"Modelo: {args.model}")
+            elif cmd == "/provider":
+                print(f"Proveedor actual: {PROVIDER} ({HOST}). Para cambiar, "
+                      "sal y usa el prefijo ocli/ocloud/onvidia/ogemini.")
+            elif cmd == "/session" and value:
+                if session:
+                    session_save(session, args.model, history)
+                session = value
+                args.session = session
+                history = [m for m in session_load(session)["messages"]
+                           if m.get("role") != "system"]
+                print(f"Sesión: {session} ({len(history)} mensajes)")
+            elif cmd == "/clear":
+                history = []
+                print("Historial limpiado en esta sesión.")
+            elif cmd == "/root" and value:
+                candidate = Path(value).expanduser().resolve()
+                if candidate.is_dir():
+                    root = candidate
+                    print(f"Raíz: {root}")
+                else:
+                    print("No es una carpeta.")
+            elif cmd == "/tools":
+                print(", ".join(AGENT_TOOL_NAMES))
+            elif cmd == "/rag" and value:
+                print(agent_rag(root, {"query": value}))
+            elif cmd == "/bash" and value:
+                print(agent_bash(root, {"command": value}, args))
+            elif cmd == "/undo":
+                print(agent_undo(undo))
+            elif cmd == "/yes":
+                args.yes = not args.yes
+                print(f"Confirmaciones: {'desactivadas' if args.yes else 'activadas'}")
+            else:
+                print("Comando no reconocido. Usa /help.")
+            continue
+
+        history.append({"role": "user", "content": line})
+        for _ in range(max(1, args.steps)):
+            messages = [{"role": "system", "content": agent_system(root)}] + history
+            decision, stats = agent_call(messages, args)
+            thought = decision.get("thought")
+            if thought:
+                print(f"  · {thought}")
+            tool = decision.get("tool")
+            if tool == "answer":
+                answer = str(decision.get("answer", ""))
+                print(answer)
+                history.append({"role": "assistant", "content": answer})
+                break
+            print(f"[{tool}]", flush=True)
+            result = agent_run_tool(tool, decision.get("args", {}), args, root, undo)
+            print(result[:4000])
+            history.append({"role": "assistant",
+                            "content": json.dumps(decision, ensure_ascii=False)})
+            history.append({"role": "user", "content": f"RESULTADO de {tool}:\n{result[:6000]}"})
+        else:
+            print(f"Se alcanzó el límite de {args.steps} pasos. Reformula o usa /clear.")
+        history = history[-max(4, args.history):]
+        if session:
+            session_save(session, args.model, history)
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="ollama-cli.py",
@@ -1557,6 +1950,8 @@ def build_parser():
   ollama-cli.py code review ~/ollama-cli.py --dry-run
   ollama-cli.py code tests modulo.py
   ollama-cli.py code commit
+  ollama-cli.py agent                          # REPL con herramientas y permisos
+  ollama-cli.py agent --root ~/ollama-local-kit --session trabajo
   ollama-cli.py --debug act "muestra la fecha"
   ollama-cli.py debug --full
   ollama-cli.py import gemma3:q2 /home/onion/Documentos/ModelsIA/Gemma-...-Q2_k.gguf
@@ -1621,6 +2016,27 @@ def build_parser():
     cd.add_argument("--stats", action="store_true")
     cd.add_argument("--session")
     cd.set_defaults(func=cmd_code)
+
+    ag = sub.add_parser("agent", help="REPL de agente con herramientas y confirmaciones")
+    ag.add_argument("-m", "--model", default="nemotron3:gpu",
+                    help="modelo del bucle (default: nemotron3:gpu)")
+    ag.add_argument("--root", default=".", help="carpeta de trabajo (default: la actual)")
+    ag.add_argument("--session", help="guardar/recuperar la conversación")
+    ag.add_argument("--new-session", action="store_true", help="empezar de cero")
+    ag.add_argument("--steps", type=int, default=8, help="máximo de herramientas por petición")
+    ag.add_argument("--history", type=int, default=20, help="mensajes conservados en memoria")
+    ag.add_argument("--ctx", type=int, default=2048)
+    ag.add_argument("--max-tokens", type=int, default=512)
+    ag.add_argument("-t", "--temperature", type=float, default=0.2)
+    ag.add_argument("--bash-timeout", type=int, default=60,
+                    help="segundos por comando de la herramienta bash")
+    ag.add_argument("--yes", action="store_true",
+                    help="no pedir confirmación para write/edit/bash")
+    ag.add_argument("--allow-dangerous", action="store_true",
+                    help="permitir comandos peligrosos (sigue pidiendo confirmación)")
+    ag.add_argument("--no-schema", action="store_true",
+                    help="parsear JSON del texto cuando el proveedor no admite format")
+    ag.set_defaults(func=cmd_agent)
 
     a = sub.add_parser("act", help="ejecutar acción en lenguaje natural")
     a.add_argument("text", nargs="*")

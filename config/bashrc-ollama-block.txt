@@ -10,6 +10,7 @@ alias osess='$HOME/ollama-cli.py session'
 alias odgpu='$HOME/ollama-scripts/gemma4-dgpu.sh'
 alias ocode='$HOME/ollama-cli.py code'
 alias odebug='$HOME/ollama-cli.py debug'
+alias oagent='$HOME/ollama-cli.py agent'
 ocloud() {
     if [ ! -s "$HOME/.ollama-cloud-key" ]; then
         echo "Falta ~/.ollama-cloud-key con tu API key de ollama.com" >&2

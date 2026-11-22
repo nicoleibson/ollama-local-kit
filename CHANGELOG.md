@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-22 (décima tanda)
+
+- Nuevo subcomando `agent` (alias `oagent`): REPL con herramientas `read`,
+  `list`, `grep`, `rag`, `write`, `edit` y `bash`, bucle de decisiones con JSON
+  Schema y confirmaciones. Arranca con `nemotron3:gpu` y conserva sesión.
+- Las rutas se confinan a `--root`; se bloquean secretos y `.git`. Comandos
+  peligrosos requieren `--allow-dangerous`, y `/undo` restaura cambios desde
+  `~/.ollama-agent-undo`. `--yes` desactiva confirmaciones bajo responsabilidad
+  del usuario.
+- Comandos internos (`/help`, `/model`, `/provider`, `/session`, `/clear`,
+  `/root`, `/tools`, `/rag`, `/bash`, `/undo`, `/yes`, `/exit`), autocompletado y
+  documentación en manual, README e INSTALL. Proveedores sin JSON Schema
+  bloquean el agente salvo `--no-schema`.
+- Verificado con decisiones y `urlopen` simulados: sin inferencias reales ni
+  créditos gastados.
+
 ## 2026-11-22 (novena tanda)
 
 - Adaptador OpenAI-compatible para NVIDIA NIM y Google Gemini: `api_prepare()`

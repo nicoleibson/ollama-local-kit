@@ -80,6 +80,8 @@ ocloud list                                   # modelos cloud (necesita API key)
 ocloud chat -m glm-5.3 "revisa este diff"     # nube bajo demanda
 onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
 ogemini chat -m gemini-4-hydrogen "explica esto"
+oagent                                        # REPL agente con herramientas
+oagent --root ~/ollama-local-kit --session trabajo
 ochat --session proyecto "hola"               # conversación persistente
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
@@ -130,6 +132,15 @@ También hay adaptadores para **NVIDIA NIM** (`onvidia`, key en
 con `reasoning_effort` pero no ofrece JSON Schema ni embeddings en esa API;
 Gemini sí admite ambos, aunque su thinking no se puede desactivar. `ocli` sigue
 siendo local por defecto. Ver manual, sección 11.
+
+## Modo agente interactivo
+
+`oagent` es un REPL con herramientas (`read`, `list`, `grep`, `rag`, `write`,
+`edit`, `bash`) que encadena llamadas al modelo mediante JSON Schema. Arranca con
+`nemotron3:gpu`, mantiene sesión y permite `/undo` de los cambios. Las
+operaciones de lectura son automáticas; escribir, editar o ejecutar comandos
+piden confirmación, y las rutas quedan confinadas a `--root`. Ver manual,
+sección 9.
 
 ## Seguridad
 

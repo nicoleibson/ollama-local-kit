@@ -590,6 +590,58 @@ Si una orden falla, verás `ERROR: ... | Detalle en ~/.ollama-debug.log`. Con
 `--debug` se muestra además el traceback en pantalla. El log se incluye en el
 backup y se excluye del repositorio.
 
+### Modo agente interactivo (`oagent`)
+
+`oagent` convierte la CLI en un REPL con herramientas, parecido a un agente de
+código, pero con permisos explícitos y sin servidor ni TUI. Arranca con
+`nemotron3:gpu` local y usa `format` + JSON Schema (no tool calling nativo), que
+es lo que mejor funciona con los modelos pequeños de este kit:
+
+```bash
+cd ~/ollama-local-kit
+oagent                                         # raíz = directorio actual
+oagent --root ~/ollama-local-kit --session trabajo
+oagent -m gemma3:q4 --steps 4                  # más rápido, menos pasos
+ogemini agent --root ~/ollama-local-kit        # Gemini también admite schema
+```
+
+El bucle funciona así: escribes una petición, el modelo devuelve un JSON con
+`thought`, `tool`, `args` y, si ya puede responder, `answer`. La CLI ejecuta la
+herramienta, añade el resultado al historial y vuelve a llamar al modelo hasta
+que el modelo devuelve `answer` o se alcanza `--steps` (8 por defecto).
+
+| Herramienta | Qué hace | Permiso |
+|---|---|---|
+| `read` | Lee un archivo con números de línea (200 líneas por llamada) | automático |
+| `list` | Lista una carpeta | automático |
+| `grep` | Busca un regex, máximo 30 coincidencias | automático |
+| `rag` | Recupera fragmentos del índice con `qwen:gpu` | automático |
+| `write` | Crea o sobrescribe un archivo | **confirmación** |
+| `edit` | Reemplaza un texto que debe aparecer una sola vez | **confirmación** |
+| `bash` | Ejecuta un comando (valida que exista y filtra patrones peligrosos) | **confirmación** |
+
+Comandos internos: `/help`, `/model NAME`, `/provider`, `/session NAME`,
+`/clear`, `/root PATH`, `/tools`, `/rag PREGUNTA`, `/bash COMANDO`, `/undo`,
+`/yes` (alterna confirmaciones) y `/exit`.
+
+Seguridad y límites:
+
+- Las rutas se resuelven dentro de `--root`; se rechazan absolutas, `..`,
+  secretos (`~/.nvidia-api-key`, `~/.gemini-api-key`, `~/.ollama-cloud-key`) y
+  `.git`. Nada se escribe fuera de esa carpeta.
+- Toda escritura/edición guarda una copia en `~/.ollama-agent-undo`; `/undo`
+  restaura el último cambio o borra el archivo recién creado.
+- Los comandos peligrosos (`rm -rf /`, `mkfs`, `dd if=`, `curl … | sh`, …)
+  se bloquean salvo `--allow-dangerous`, y aun así piden confirmación. `--yes`
+  desactiva las confirmaciones: úsalo solo en directorios desechables.
+- Cada petición consume contexto: el historial se recorta a `--history` mensajes
+  (20) y el modelo va con `--ctx 2048`. Para tareas largas usa `ogemini agent`
+  o un modelo cloud con más contexto.
+- Ollama Cloud y NVIDIA no soportan JSON Schema aquí: el modo agente se
+  bloquea; puedes forzar `--no-schema` para que intente parsear el JSON del
+  texto, con menor fiabilidad. El proveedor no cambia en caliente: `/provider`
+  indica qué prefijo usar al relanzar.
+
 ---
 
 ## 10. Sesiones, prompts e historial de benchmarks

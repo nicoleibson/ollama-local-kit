@@ -204,6 +204,8 @@ ocode tests "def suma(a,b): return a+b" --no-stream
 bash ~/ollama-scripts/selftest.sh
 odebug -n 5
 ocli config                                   # debe decir MODO: LOCAL
+oagent --help                                 # debe mostrar el REPL de agente
+# oagent --root /tmp                          # prueba en carpeta desechable
 ```
 
 Opcional, solo si tienes cuenta en ollama.com con créditos:
@@ -246,7 +248,7 @@ sudo systemctl restart ollama
 
 rm -f ~/ollama-cli.py ~/ollama-bench.sh ~/ollama-act.py \
       ~/ollama-commands.json ~/ollama-kit.md
-rm -rf ~/ollama-scripts ~/.ollama-rag ~/.ollama-sessions
+rm -rf ~/ollama-scripts ~/.ollama-rag ~/.ollama-sessions ~/.ollama-agent-undo
 rm -f ~/.ollama-prompts.json ~/.ollama-bench-history.jsonl ~/.ollama-debug.log
 rm -f ~/.ollama-cloud-key ~/.nvidia-api-key ~/.gemini-api-key
 ```

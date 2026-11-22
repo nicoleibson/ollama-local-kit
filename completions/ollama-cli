@@ -1,5 +1,5 @@
 # Autocompletado para ollama-cli.py y sus alias (ocli, ochat, oact, orag,
-# orun, owatch, oprompt, osess, odgpu, ocode, odebug, ocloud, onvidia, ogemini).
+# orun, owatch, oprompt, osess, odgpu, ocode, odebug, ocloud, onvidia, ogemini, oagent).
 # Se instala desde ~/.bashrc; no necesita bash-completion adicional.
 
 _ollama_cli_models() {
@@ -66,6 +66,7 @@ _ollama_cli_complete() {
         ocloud) w=(ollama-cli.py "${COMP_WORDS[@]:1}") ;;
         onvidia) w=(ollama-cli.py "${COMP_WORDS[@]:1}") ;;
         ogemini) w=(ollama-cli.py "${COMP_WORDS[@]:1}") ;;
+        oagent) w=(ollama-cli.py agent "${COMP_WORDS[@]:1}") ;;
         *)     w=("${COMP_WORDS[@]}") ;;
     esac
 
@@ -98,7 +99,7 @@ _ollama_cli_complete() {
 
     # Subcomandos principales.
     if (( cword == 1 )); then
-        COMPREPLY=( $(compgen -W "chat ask act run do bench status watch doctor debug code list show stop import rm embed rag prompt session config --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "chat ask act run do bench status watch doctor debug code agent list show stop import rm embed rag prompt session config --help" -- "$cur") )
         return
     fi
 
@@ -172,6 +173,8 @@ _ollama_cli_complete() {
             opts="--help --all" ;;
         code)
             opts="--help --from --lines --stdin --ctx --max-tokens --no-schema --dry-run --no-stream --stats --session -m --model" ;;
+        agent)
+            opts="--help --root --session --new-session --steps --history --ctx --max-tokens --temperature --bash-timeout --yes --allow-dangerous --no-schema -m --model" ;;
         debug)
             opts="--help --lines --full --clear" ;;
         import)
@@ -193,4 +196,4 @@ _ollama_cli_complete() {
     COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
 }
 
-complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag orun owatch oprompt osess odgpu ocode odebug ocloud onvidia ogemini
+complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag orun owatch oprompt osess odgpu ocode odebug ocloud onvidia ogemini oagent
