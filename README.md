@@ -98,11 +98,18 @@ ocli bench --history                          # historial de rendimiento
 ogui                                          # ventana local: ver, ejecutar y chatear
 ```
 
-`ogui` abre siete pestañas (Resumen, Modelos, Chat, Sesiones, Flujos, Comandos y
-Registro). Fuerza `OLLAMA_KIT_LOCAL=1`, elimina variables de nube/API key, pide
-confirmación para acciones que escriben o descargan modelos y no lanza ninguna
-inferencia al abrirse. El chat usa `chat --no-stream` en un hilo para no congelar
-la interfaz. Detalles en [`ollama-kit.md`](ollama-kit.md#17-ventana-interactiva-ogui).
+`ogui` abre nueve pestañas (Resumen, Modelos, Chat, RAG, Acciones, Sesiones,
+Flujos, Comandos y Registro). Fuerza `OLLAMA_KIT_LOCAL=1`, elimina variables de
+nube/API key, pide confirmación para acciones que escriben o descargan modelos y
+no lanza ninguna inferencia al abrirse. El chat usa `chat --no-stream` en un hilo
+para no congelar la interfaz.
+
+RAG indexa archivos con `qwen:gpu` y pregunta con `nemotron3:gpu`. Acciones
+simula con `act --dry-run` y solo ejecuta entradas de solo lectura tras
+confirmación; nunca expone `--free`, `--yes` ni `--allow-dangerous`. `run` solo
+ejecuta directamente `chat`/`rag` y `code commit` únicamente redacta el mensaje.
+También hay lanzador de escritorio (`Kit Ollama local`). Detalles en
+[`ollama-kit.md`](ollama-kit.md#17-ventana-interactiva-ogui).
 
 Funciones principales de `ollama-cli.py`:
 

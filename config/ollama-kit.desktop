@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Kit Ollama local
+GenericName=Panel local de Ollama
+Comment=Ver, ejecutar y chatear con el kit Ollama local
+Exec=/home/onion/ollama-kit-gui.py
+Path=/home/onion
+Icon=ollama-kit
+Terminal=false
+Categories=Utility;
+Keywords=ollama;local;ia;rag;chat;
+StartupNotify=true

@@ -264,6 +264,74 @@ def build_flow_argv(mode: str, path: str, prompt: str = "", labels: str = "",
     return build_cli_argv(*args)
 
 
+def build_rag_ask_argv(question: str, model: str = "nemotron3:gpu",
+                       embed_model: str = "qwen:gpu", k: int = 3,
+                       min_score: float = 0.0, context_chars: int = 3600,
+                       max_tokens: int = 384) -> list[str]:
+    args = ["rag", "ask", question, "-m", model,
+            "--embed-model", embed_model, "-k", str(k),
+            "--min-score", str(min_score), "--context-chars", str(context_chars),
+            "--max-tokens", str(max_tokens), "--no-stream"]
+    return build_cli_argv(*args)
+
+
+def build_act_argv(text: str, model: str = "", dry_run: bool = False) -> list[str]:
+    """Nunca expone --free, --yes ni --allow-dangerous desde la GUI."""
+    args = ["act"]
+    if model:
+        args += ["-m", model]
+    if dry_run:
+        args.append("--dry-run")
+    args.append(text)
+    return build_cli_argv(*args)
+
+
+def build_run_argv(text: str, intent: str = "", model: str = "",
+                   dry_run: bool = False) -> list[str]:
+    args = ["run"]
+    if intent and intent != "automático":
+        args += ["--intent", intent]
+    if model:
+        args += ["-m", model]
+    if dry_run:
+        args.append("--dry-run")
+    args += ["--no-stream", text]
+    return build_cli_argv(*args)
+
+
+def build_code_argv(action: str, paths: list[str], model: str = "",
+                    start: int = 1, lines: int = 120, dry_run: bool = False,
+                    no_schema: bool = False, stats: bool = False) -> list[str]:
+    args = ["code", action] + list(paths)
+    if model:
+        args += ["-m", model]
+    args += ["--from", str(start), "--lines", str(lines), "--no-stream"]
+    if dry_run:
+        args.append("--dry-run")
+    if no_schema:
+        args.append("--no-schema")
+    if stats:
+        args.append("--stats")
+    return build_cli_argv(*args)
+
+
+def parse_act_choice(text: str) -> str:
+    """Extrae el identificador elegido de la salida de `act --dry-run`."""
+    match = re.search(r"comando:\s*([^\s|]+)", text)
+    return match.group(1).strip() if match else ""
+
+
+def all_catalog_names() -> list[str]:
+    """Todas las claves del catálogo, incluidas las no permitidas en Comandos."""
+    try:
+        data = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    return sorted(key for key in data if not key.startswith("_"))
+
+
 # ---------------------------------------------------------------------------
 # Widgets reutilizables
 # ---------------------------------------------------------------------------
@@ -922,6 +990,361 @@ class RegistroTab(BaseTab):
                                self.output, after=self.refresh)
 
 
+class RAGTab(BaseTab):
+    def __init__(self, app):
+        super().__init__(app, "RAG")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
+
+        form = ttk.Frame(self)
+        form.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        form.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Pregunta:").grid(row=0, column=0, sticky="w")
+        self.question_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.question_var).grid(
+            row=0, column=1, columnspan=4, sticky="ew", padx=(4, 8))
+        ttk.Button(form, text="Preguntar", command=self.ask).grid(row=0, column=5)
+
+        ttk.Label(form, text="Modelo:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.model_var = tk.StringVar(value="nemotron3:gpu")
+        combo = ttk.Combobox(form, textvariable=self.model_var, width=20, state="readonly")
+        combo.grid(row=1, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
+        app.model_combos.append(combo)
+        ttk.Label(form, text="Embeddings:").grid(row=1, column=2, sticky="w", pady=(6, 0))
+        self.embed_var = tk.StringVar(value="qwen:gpu")
+        ttk.Combobox(form, textvariable=self.embed_var, state="readonly", width=16,
+                     values=["qwen:gpu", "qwen35:embed"]).grid(
+            row=1, column=3, sticky="w", padx=(4, 8), pady=(6, 0))
+        ttk.Label(form, text="k:").grid(row=1, column=4, sticky="w", pady=(6, 0))
+        self.k_var = tk.StringVar(value="3")
+        ttk.Spinbox(form, from_=1, to=12, textvariable=self.k_var, width=5).grid(
+            row=1, column=5, sticky="w", pady=(6, 0))
+        self.min_var = tk.StringVar(value="0.0")
+        self.ctx_var = tk.StringVar(value="3600")
+        ttk.Label(form, text="Min score:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ttk.Entry(form, textvariable=self.min_var, width=8).grid(row=2, column=1, sticky="w", padx=(4, 8))
+        ttk.Label(form, text="Contexto:").grid(row=2, column=2, sticky="w", pady=(6, 0))
+        ttk.Entry(form, textvariable=self.ctx_var, width=8).grid(row=2, column=3, sticky="w", padx=(4, 8))
+
+        paths_frame = ttk.LabelFrame(self, text="Archivos para el índice", padding=6)
+        paths_frame.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        paths_frame.columnconfigure(0, weight=1)
+        list_frame = ttk.Frame(paths_frame)
+        list_frame.grid(row=0, column=0, sticky="nsew")
+        self.paths = tk.Listbox(list_frame, height=4, selectmode="extended",
+                                bg="#10181e", fg="#dfe7ec", font=("DejaVu Sans Mono", 10))
+        self.paths.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(list_frame, orient="vertical",
+                               command=self.paths.yview)
+        scroll.pack(side="right", fill="y")
+        self.paths.configure(yscrollcommand=scroll.set)
+        actions = ttk.Frame(paths_frame)
+        actions.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+        for text, command in (
+            ("Añadir archivo", self.add_files),
+            ("Añadir carpeta", self.add_folder),
+            ("Quitar", self.remove_paths),
+            ("Indexar", self.index),
+            ("Ver índice", self.refresh),
+            ("Limpiar índice", self.clear),
+        ):
+            ttk.Button(actions, text=text, command=command).pack(fill="x", pady=1)
+
+        self.output = OutputView(self, height=12)
+        self.output.frame.grid(row=2, column=0, sticky="nsew")
+
+    def add_files(self) -> None:
+        paths = filedialog.askopenfilename(initialdir=str(HOME), multiple=True,
+                                           title="Archivos para indexar")
+        for path in (paths or ()):
+            if path not in self.paths.get(0, "end"):
+                self.paths.insert("end", path)
+
+    def add_folder(self) -> None:
+        path = filedialog.askdirectory(initialdir=str(HOME), title="Carpeta para indexar")
+        if path and path not in self.paths.get(0, "end"):
+            self.paths.insert("end", path)
+
+    def remove_paths(self) -> None:
+        for index in reversed(self.paths.curselection()):
+            self.paths.delete(index)
+
+    def refresh(self, after=None) -> None:
+        cmd = pretty_command(build_cli_argv("rag", "list"))
+        self.app.worker.submit("Índice RAG\n" + cmd,
+                               lambda: cli_text(["rag", "list"], timeout=30),
+                               self.output, after=after)
+
+    def ask(self) -> None:
+        question = self.question_var.get().strip()
+        if not question:
+            messagebox.showinfo("RAG", "Escribe una pregunta.", parent=self.app)
+            return
+        argv = build_rag_ask_argv(
+            question, self.model_var.get() or "nemotron3:gpu",
+            self.embed_var.get() or "qwen:gpu", int(self.k_var.get() or 3),
+            float(self.min_var.get() or 0), int(self.ctx_var.get() or 3600),
+        )
+        self.app.worker.submit("Pregunta RAG\n" + pretty_command(argv),
+                               lambda: run_process_text(argv, timeout=300),
+                               self.output)
+
+    def index(self) -> None:
+        paths = list(self.paths.get(0, "end"))
+        if not paths:
+            messagebox.showinfo("RAG", "Añade al menos un archivo o carpeta.", parent=self.app)
+            return
+        argv = build_cli_argv("rag", "index", *paths,
+                              "--embed-model", self.embed_var.get() or "qwen:gpu")
+        shown = pretty_command(argv)
+        if not messagebox.askyesno("Confirmar índice",
+                                   "¿Reconstruir el índice RAG con estos archivos?\n\n" + shown,
+                                   parent=self.app):
+            return
+        self.app.worker.submit("Indexando\n" + shown,
+                               lambda: run_process_text(argv, timeout=1200),
+                               self.output, after=self.refresh)
+
+    def clear(self) -> None:
+        argv = build_cli_argv("rag", "clear", "--yes")
+        shown = pretty_command(argv)
+        if not messagebox.askyesno("Confirmar", "¿Borrar el índice RAG actual?\n\n" + shown,
+                                   parent=self.app):
+            return
+        self.app.worker.submit("Borrando índice\n" + shown,
+                               lambda: cli_text(["rag", "clear", "--yes"], timeout=30),
+                               self.output, after=self.refresh)
+
+
+class AccionesTab(BaseTab):
+    def __init__(self, app):
+        super().__init__(app, "Acciones")
+        self.rowconfigure(1, weight=1)
+        self.last_action_key = ""
+        self.last_action_cmd = ""
+
+        self.inner = ttk.Notebook(self)
+        self.inner.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.act_frame = ttk.Frame(self.inner, padding=8)
+        self.run_frame = ttk.Frame(self.inner, padding=8)
+        self.code_frame = ttk.Frame(self.inner, padding=8)
+        self.inner.add(self.act_frame, text="Act")
+        self.inner.add(self.run_frame, text="Run")
+        self.inner.add(self.code_frame, text="Code")
+        self._build_act(app)
+        self._build_run(app)
+        self._build_code(app)
+
+        self.output = OutputView(self, height=13)
+        self.output.frame.grid(row=1, column=0, sticky="nsew")
+
+    @staticmethod
+    def _model(frame, app, row: int, column: int) -> ttk.Combobox:
+        ttk.Label(frame, text="Modelo:").grid(row=row, column=column, sticky="w")
+        combo = ttk.Combobox(frame, width=20, state="readonly",
+                             values=["automático", DEFAULT_MODEL, "nemotron3:gpu"])
+        combo.set("automático")
+        combo.grid(row=row, column=column + 1, sticky="w", padx=(4, 8))
+        app.optional_model_combos.append(combo)
+        return combo
+
+    def _build_act(self, app) -> None:
+        frame = self.act_frame
+        ttk.Label(frame, text="Instrucción:").grid(row=0, column=0, sticky="w")
+        self.act_text = tk.StringVar(value="muestra la fecha")
+        ttk.Entry(frame, textvariable=self.act_text, width=46).grid(
+            row=0, column=1, columnspan=3, sticky="ew", padx=(4, 8))
+        self.act_model = self._model(frame, app, 1, 0)
+
+        ttk.Label(frame, text="Catálogo:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.act_catalog = ttk.Combobox(frame, state="readonly", width=24,
+                                        values=all_catalog_names() or ["date"])
+        self.act_catalog.set("date")
+        self.act_catalog.grid(row=2, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
+        ttk.Button(frame, text="Usar", command=self.act_use_catalog).grid(
+            row=2, column=2, sticky="w", pady=(6, 0))
+        ttk.Button(frame, text="Ver catálogo", command=self.act_list).grid(
+            row=2, column=3, sticky="w", pady=(6, 0))
+        ttk.Button(frame, text="Simular", command=self.act_simulate).grid(
+            row=3, column=1, sticky="w", pady=(8, 0))
+        ttk.Button(frame, text="Ejecutar segura", command=self.act_execute).grid(
+            row=3, column=2, sticky="w", pady=(8, 0))
+        ttk.Label(frame, text="Simular primero: solo se ejecutan entradas de solo lectura.",
+                  foreground="#7f8c96").grid(row=4, column=1, columnspan=3, sticky="w", pady=(6, 0))
+
+    def _build_run(self, app) -> None:
+        frame = self.run_frame
+        ttk.Label(frame, text="Petición:").grid(row=0, column=0, sticky="w")
+        self.run_text = tk.StringVar()
+        ttk.Entry(frame, textvariable=self.run_text, width=50).grid(
+            row=0, column=1, columnspan=3, sticky="ew", padx=(4, 8))
+        ttk.Label(frame, text="Intención:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.run_intent = ttk.Combobox(frame, state="readonly", width=14,
+                                       values=["automático", "act", "rag", "chat"])
+        self.run_intent.set("automático")
+        self.run_intent.grid(row=1, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
+        self.run_model = self._model(frame, app, 1, 2)
+        ttk.Button(frame, text="Simular", command=self.run_simulate).grid(
+            row=2, column=1, sticky="w", pady=(8, 0))
+        ttk.Button(frame, text="Ejecutar chat/RAG", command=self.run_execute).grid(
+            row=2, column=2, sticky="w", pady=(8, 0))
+        ttk.Label(frame, text="act y automático solo se simulan: usa Acciones para elegir una entrada segura.",
+                  foreground="#7f8c96").grid(row=3, column=1, columnspan=3, sticky="w", pady=(6, 0))
+
+    def _build_code(self, app) -> None:
+        frame = self.code_frame
+        ttk.Label(frame, text="Acción:").grid(row=0, column=0, sticky="w")
+        self.code_action = ttk.Combobox(frame, state="readonly", width=14,
+                                        values=["review", "tests", "explain", "commit"])
+        self.code_action.set("review")
+        self.code_action.grid(row=0, column=1, sticky="w", padx=(4, 8))
+        self.code_model = self._model(frame, app, 0, 2)
+        ttk.Label(frame, text="Archivo:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.code_path = tk.StringVar()
+        ttk.Entry(frame, textvariable=self.code_path, width=46).grid(
+            row=1, column=1, columnspan=2, sticky="ew", padx=(4, 8), pady=(6, 0))
+        ttk.Button(frame, text="...", width=4, command=self.code_pick).grid(
+            row=1, column=3, sticky="w", pady=(6, 0))
+        self.code_start = tk.StringVar(value="1")
+        self.code_lines = tk.StringVar(value="120")
+        ttk.Label(frame, text="Desde:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ttk.Spinbox(frame, from_=1, to=9999, textvariable=self.code_start,
+                    width=7).grid(row=2, column=1, sticky="w", padx=(4, 8))
+        ttk.Label(frame, text="Líneas:").grid(row=2, column=2, sticky="w")
+        ttk.Spinbox(frame, from_=1, to=999, textvariable=self.code_lines,
+                    width=7).grid(row=2, column=3, sticky="w", padx=(4, 8))
+        self.code_schema_var = tk.BooleanVar()
+        self.code_stats_var = tk.BooleanVar()
+        ttk.Checkbutton(frame, text="Sin JSON Schema", variable=self.code_schema_var).grid(
+            row=3, column=1, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(frame, text="Stats", variable=self.code_stats_var).grid(
+            row=3, column=2, sticky="w", pady=(6, 0))
+        ttk.Button(frame, text="Preparar prompt", command=self.code_prepare).grid(
+            row=4, column=1, sticky="w", pady=(8, 0))
+        ttk.Button(frame, text="Ejecutar", command=self.code_execute).grid(
+            row=4, column=2, sticky="w", pady=(8, 0))
+
+    def act_use_catalog(self) -> None:
+        key = self.act_catalog.get()
+        if key:
+            self.act_text.set(key)
+
+    def act_list(self) -> None:
+        self.app.worker.submit("Catálogo de acciones\n" +
+                               pretty_command(build_cli_argv("act", "--list")),
+                               lambda: cli_text(["act", "--list"], timeout=30),
+                               self.output)
+
+    def act_simulate(self) -> None:
+        text = self.act_text.get().strip()
+        if not text:
+            messagebox.showinfo("Act", "Escribe una instrucción.", parent=self.app)
+            return
+        argv = build_act_argv(text, self.act_model.get(), dry_run=True)
+        self.app.worker.submit("Simular acción\n" + pretty_command(argv),
+                               lambda: run_process_text(argv, timeout=180),
+                               self.output, on_success=self._act_parsed)
+
+    def _act_parsed(self, result) -> None:
+        key = parse_act_choice(str(result))
+        allowed = {entry["key"]: entry["cmd"] for entry in catalog_entries()}
+        self.last_action_key = key if key in allowed else ""
+        self.last_action_cmd = allowed.get(key, "")
+        if self.last_action_key:
+            self.output.write(f"Acción permitida: {key} -> {self.last_action_cmd}\n"
+                              "Puedes ejecutarla con 'Ejecutar segura'.",
+                              heading="Resultado")
+        elif key:
+            self.output.write(f"La acción '{key}' no está en la lista blanca de la GUI. "
+                              "Ejecútala desde la terminal si procede.", heading="Resultado")
+
+    def act_execute(self) -> None:
+        if not self.last_action_key:
+            messagebox.showinfo("Act", "Simula primero y elige una acción permitida.",
+                                parent=self.app)
+            return
+        if not messagebox.askyesno("Confirmar acción",
+                                   "¿Ejecutar esta entrada de solo lectura?\n\n" +
+                                   self.last_action_cmd, parent=self.app):
+            return
+        self.app.worker.submit("Acción " + self.last_action_key + "\n" + self.last_action_cmd,
+                               lambda: run_process_text(command=self.last_action_cmd,
+                                                        timeout=180),
+                               self.output)
+
+    def run_simulate(self) -> None:
+        text = self.run_text.get().strip()
+        if not text:
+            messagebox.showinfo("Run", "Escribe una petición.", parent=self.app)
+            return
+        argv = build_run_argv(text, self.run_intent.get(), self.run_model.get(),
+                              dry_run=True)
+        self.app.worker.submit("Simular enrutador\n" + pretty_command(argv),
+                               lambda: run_process_text(argv, timeout=180), self.output)
+
+    def run_execute(self) -> None:
+        text = self.run_text.get().strip()
+        if not text:
+            messagebox.showinfo("Run", "Escribe una petición.", parent=self.app)
+            return
+        intent = self.run_intent.get()
+        if intent in ("act", "automático"):
+            messagebox.showinfo(
+                "Run", "El enrutador podría elegir act. Simula primero y ejecuta "
+                "solo entradas permitidas desde la pestaña Acciones.", parent=self.app)
+            return
+        argv = build_run_argv(text, intent, self.run_model.get(), dry_run=False)
+        shown = pretty_command(argv)
+        if not messagebox.askyesno("Confirmar", "¿Ejecutar esta petición local?\n\n" + shown,
+                                   parent=self.app):
+            return
+        self.app.worker.submit("Enrutador " + intent + "\n" + shown,
+                               lambda: run_process_text(argv, timeout=300), self.output)
+
+    def code_pick(self) -> None:
+        path = filedialog.askopenfilename(initialdir=str(HOME), title="Archivo de código")
+        if path:
+            self.code_path.set(path)
+
+    def code_argv(self, dry_run: bool) -> list[str]:
+        action = self.code_action.get()
+        raw = self.code_path.get().strip()
+        paths = []
+        if raw:
+            target = Path(raw).expanduser()
+            if action != "commit" and not target.exists():
+                raise SystemExit(f"No existe: {target}")
+            paths = [str(target)]
+        return build_code_argv(
+            action, paths, self.code_model.get(),
+            int(self.code_start.get() or 1), int(self.code_lines.get() or 120),
+            dry_run=dry_run, no_schema=self.code_schema_var.get(),
+            stats=self.code_stats_var.get(),
+        )
+
+    def code_prepare(self) -> None:
+        try:
+            argv = self.code_argv(dry_run=True)
+        except SystemExit as exc:
+            messagebox.showerror("Code", str(exc), parent=self.app)
+            return
+        self.app.worker.submit("Preparar prompt\n" + pretty_command(argv),
+                               lambda: run_process_text(argv, timeout=120), self.output)
+
+    def code_execute(self) -> None:
+        try:
+            argv = self.code_argv(dry_run=False)
+        except SystemExit as exc:
+            messagebox.showerror("Code", str(exc), parent=self.app)
+            return
+        shown = pretty_command(argv)
+        if not messagebox.askyesno("Confirmar", "¿Ejecutar esta acción de código?\n\n" + shown,
+                                   parent=self.app):
+            return
+        self.app.worker.submit("Code " + self.code_action.get() + "\n" + shown,
+                               lambda: run_process_text(argv, timeout=300), self.output)
+
+
 # ---------------------------------------------------------------------------
 # Aplicación
 # ---------------------------------------------------------------------------
@@ -936,6 +1359,7 @@ class KitGUI(tk.Tk):
         self.status_var = tk.StringVar(value="Listo · modo local forzado")
         self.model_names: list[str] = []
         self.model_combos: list[ttk.Combobox] = []
+        self.optional_model_combos: list[ttk.Combobox] = []
         self._chain: list = []
         self._chain_index = 0
 
@@ -974,6 +1398,8 @@ class KitGUI(tk.Tk):
         self.resumen_tab = ResumenTab(self)
         self.modelos_tab = ModelosTab(self)
         self.chat_tab = ChatTab(self)
+        self.rag_tab = RAGTab(self)
+        self.acciones_tab = AccionesTab(self)
         self.sesiones_tab = SesionesTab(self)
         self.flujos_tab = FlujosTab(self)
         self.comandos_tab = ComandosTab(self)
@@ -988,6 +1414,11 @@ class KitGUI(tk.Tk):
             combo.configure(values=values)
             if current not in values:
                 combo.set(DEFAULT_MODEL if DEFAULT_MODEL in values else values[0])
+        for combo in self.optional_model_combos:
+            current = combo.get()
+            combo.configure(values=["automático"] + values)
+            if current not in ["automático"] + values:
+                combo.set("automático")
 
     def refresh_all(self) -> None:
         if self.worker.busy:
@@ -996,6 +1427,7 @@ class KitGUI(tk.Tk):
             self.resumen_tab.refresh,
             self.resumen_tab.refresh_config,
             self.modelos_tab.refresh,
+            self.rag_tab.refresh,
             self.sesiones_tab.refresh,
             self.flujos_tab.refresh,
             self.comandos_tab.refresh,

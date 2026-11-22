@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-11-22 (decimoséptima tanda)
+
+- La ventana `ogui` pasa a nueve pestañas: nuevas **RAG** (añadir
+  archivos/carpetas, indexar con `qwen:gpu`, preguntar con `orag ask`, ver y
+  limpiar el índice) y **Acciones** (subpestañas Act/Run/Code).
+- La pestaña Acciones simula con `act --dry-run`, extrae el identificador y solo
+  habilita "Ejecutar segura" para entradas de la lista blanca de solo lectura;
+  nunca expone `--free`, `--yes` ni `--allow-dangerous`. `run` solo ejecuta
+  directamente `chat`/`rag`; `act` y `automático` quedan en simulación, y `code
+  commit` solo redacta el mensaje.
+- Lanzador de escritorio `config/ollama-kit.desktop` e icono
+  `assets/ollama-kit.svg`, validados con `desktop-file-validate` e instalados en
+  `~/.local/share/applications` y `~/.local/share/icons`.
+- `/tmp/opencode/test-gui.py` ampliado: simula envío de chat, pregunta RAG,
+  cancelación/aceptación de comandos, borrado de sesión, simulación y ejecución
+  segura de `act`, bloqueo de `run` automático y preparación de `code`. Pasa sin
+  inferencias ni APIs de pago.
+- Actualizados manual (sección 17), README, INSTALL e índice RAG.
+
 ## 2026-11-22 (decimosexta tanda)
 
 - Nuevo `ollama-kit-gui.py` (alias `ogui`): ventana Tkinter nativa con siete

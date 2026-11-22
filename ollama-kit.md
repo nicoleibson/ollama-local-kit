@@ -1089,6 +1089,10 @@ chatear** en modo local.
 ogui
 ```
 
+También hay lanzador de escritorio: `~/.local/share/applications/ollama-kit.desktop`
+(con icono `~/.local/share/icons/ollama-kit.svg`). Tras instalarlo aparece como
+**Kit Ollama local** en el menú de aplicaciones.
+
 Pestañas:
 
 | Pestaña | Qué permite |
@@ -1096,6 +1100,8 @@ Pestañas:
 | Resumen | `status`, `doctor`, `config`, `rag list` e historial de `bench` |
 | Modelos | inventario, detalle (`show`), modelos cargados y descarga con confirmación |
 | Chat | selector de modelo local, sesión opcional, `system`, `stats` y `chat --no-stream` en hilo |
+| RAG | añadir archivos/carpetas, indexar con `qwen:gpu`, preguntar con `orag ask` y limpiar el índice |
+| Acciones | subpestañas Act, Run y Code: simular, ejecutar solo entradas permitidas y preparar prompts |
 | Sesiones | listado, mensajes, comando de reanudación y borrado con confirmación |
 | Flujos | formulario para `oflow map/slide/classify/ask` y lectura de informes |
 | Comandos | catálogo filtrable; solo entradas de solo lectura y ejecución con confirmación |
@@ -1109,10 +1115,18 @@ Seguridad de la ventana:
 - La pestaña Comandos solo muestra una lista blanca de entradas de solo lectura.
   Quedan fuera benchmarks con inferencia, reindexado RAG, `review`, borrados,
   `stop` y copias de seguridad.
-- Descargar modelos de memoria, borrar sesiones o limpiar el log pide
-  confirmación y muestra el comando exacto antes de ejecutarlo.
+- La pestaña Acciones nunca expone `act --free`, `--yes` ni `--allow-dangerous`.
+  Primero simula con `act --dry-run`; solo si el identificador elegido está en la
+  lista blanca se habilita "Ejecutar segura". `run` solo ejecuta directamente
+  las intenciones `chat` y `rag`: `act` y `automático` quedan en simulación.
+- `code` no hace commits: `commit` solo redacta el mensaje a partir del diff.
+- Descargar modelos de memoria, borrar sesiones, reindexar/borrar RAG, ejecutar
+  acciones o limpiar el log pide confirmación y muestra el comando exacto.
 - Al abrir la ventana no se lanza ningún modelo: solo se consultan inventario,
   sesiones, flujos y catálogo. El chat y los flujos se ejecutan solo al pulsar
   su botón, siempre con el modelo local elegido.
 - El archivo es importable para pruebas; `python3 -m py_compile
-  ollama-kit-gui.py` y `/tmp/opencode/test-gui.py` pasan sin inferencias.
+  ollama-kit-gui.py` y `/tmp/opencode/test-gui.py` pasan sin inferencias. La
+  prueba simula envío de chat, pregunta RAG, cancelación/aceptación de comandos,
+  borrado de sesión, simulación y ejecución segura de `act`, bloqueo de `run`
+  automático y preparación de prompts de `code`.

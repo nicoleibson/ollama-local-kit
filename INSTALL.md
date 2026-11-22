@@ -189,7 +189,31 @@ modifica `override.conf` ni el servicio principal: la iGPU sigue siendo el
 default del resto de modelos. Si el puerto 11435 está ocupado, el script aborta.
 Ver detalles y comparativa en [`ollama-kit.md`](ollama-kit.md), sección 8.
 
-## 8. Verificación final
+## 8. Ventana local (`ogui`)
+
+`ogui` abre un panel Tkinter nativo con nueve pestañas: Resumen, Modelos, Chat,
+RAG, Acciones, Sesiones, Flujos, Comandos y Registro. No levanta servidor ni
+navegador; fuerza `OLLAMA_KIT_LOCAL=1` y elimina variables de nube/API key en
+todos los subprocess. Al abrirla no se lanza ningún modelo.
+
+Para tenerla también en el menú de aplicaciones:
+
+```bash
+mkdir -p ~/.local/share/applications ~/.local/share/icons
+cp config/ollama-kit.desktop ~/.local/share/applications/
+cp assets/ollama-kit.svg ~/.local/share/icons/ollama-kit.svg
+chmod +x ~/.local/share/applications/ollama-kit.desktop
+desktop-file-validate ~/.local/share/applications/ollama-kit.desktop  # opcional
+update-desktop-database ~/.local/share/applications 2>/dev/null || true
+```
+
+La pestaña RAG indexa archivos con `qwen:gpu` y pregunta con `nemotron3:gpu`.
+La pestaña Acciones simula con `act --dry-run` y solo habilita "Ejecutar segura"
+si el identificador está en la lista blanca de entradas de solo lectura; `run`
+ejecuta directamente solo `chat` y `rag`, y `code commit` únicamente redacta el
+mensaje. Detalles en [`ollama-kit.md`](ollama-kit.md#17-ventana-interactiva-ogui).
+
+## 9. Verificación final
 
 ```bash
 ocli doctor
@@ -213,7 +237,7 @@ oagent --help                                 # debe mostrar el REPL de agente
 ofree config                                  # debe decir GRATIS: solo modelos locales
 oflow --help                                  # debe mostrar map/slide/classify/ask
 python3 -m py_compile ~/ollama-kit-gui.py      # sintaxis de la ventana Tkinter
-ogui                                          # abre la ventana; ciérrala sin ejecutar nada
+ogui                                          # abre la ventana; revisa RAG y Acciones sin ejecutar nada
 ofree flow map /home/onion/ollama-kit.md --prompt 'Resume' --out prueba --limit 1
 cat ~/.ollama-flow/prueba/report.md           # estado en disco, reanudable
 OLLAMA_KIT_PROVIDER=nvidia ollama-cli.py config | grep 'Modelo por defecto'  # opcional
