@@ -516,7 +516,7 @@ class Worker:
             return
         self.busy = False
         self.app.configure(cursor="")
-        self.app.status_var.set("Listo · modo local forzado")
+        self.app.status_var.set("Listo · local, perfil tareas")
         if sink:
             sink.write(str(result))
         if on_success:
@@ -1710,7 +1710,7 @@ class KitGUI(tk.Tk):
         self.geometry("1400x860")
         self.minsize(1050, 680)
         self.configure(bg="#101418")
-        self.status_var = tk.StringVar(value="Listo · modo local forzado")
+        self.status_var = tk.StringVar(value="Listo · local, perfil tareas")
         self.model_names: list[str] = []
         self.model_combos: list[ttk.Combobox] = []
         self.optional_model_combos: list[ttk.Combobox] = []
@@ -1796,7 +1796,7 @@ class KitGUI(tk.Tk):
 
     def _chain_next(self) -> None:
         if self._chain_index >= len(self._chain):
-            self.status_var.set("Listo · modo local forzado")
+            self.status_var.set("Listo · local, perfil tareas")
             return
         step = self._chain[self._chain_index]
         self._chain_index += 1
