@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-22 (cuarta tanda)
+
+- Importado `Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q2_K_P.gguf` como `gemma4:cpu`.
+  Ollama 0.33.2 reconoce la arquitectura `gemma4` (42 bloques, 7,5 B, Q2_K).
+- Descartado el offload a GPU: con `num_gpu` de 42 a 8 el backend Vulkan agota la
+  memoria (`Not enough memory for command submission`, ~4 GiB de buffer en RAM host).
+  Con `num_gpu 0` funciona a 2,56 tok/s, `100% CPU` y 0 GiB de VRAM.
+- Añadido `config/Modelfile.gemma4-cpu` con `num_ctx 512`; documentado el inventario,
+  los benchmarks, la tabla de uso y la solución de problemas.
+
 ## 2026-11-22 (tercera tanda)
 
 - `chat --session NOMBRE`: conversaciones persistentes en `~/.ollama-sessions/`,

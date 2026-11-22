@@ -147,6 +147,22 @@ alineación a 32 bytes que exige llama.cpp. El Modelfile fija `num_ctx 512` porq
 con 2048 se agota la VRAM compartida. No se recomienda como default de RAG: es ~5x
 más lento y menos preciso que `qwen:gpu`.
 
+### Gemma 4 E4B (opcional, solo CPU)
+
+El GGUF de 4,2 GB no cabe en la iGPU Carrizo: con `num_gpu > 0` el backend Vulkan
+falla con `Not enough memory for command submission`. Importarlo con el Modelfile
+preparado, que fuerza CPU:
+
+```bash
+# Ajusta la ruta FROM en config/Modelfile.gemma4-cpu si hace falta
+ollama create gemma4:cpu -f config/Modelfile.gemma4-cpu
+ollama ps    # 100% CPU, 0.00 GiB VRAM
+ocli bench gemma4:cpu --tokens 20
+```
+
+Rinde ~2,5 tok/s. No se recomienda como modelo principal: `gemma3:q4` es ~4x más
+rápido y usa la iGPU. Se conserva solo para probar la arquitectura `gemma4`.
+
 ## 8. Verificación final
 
 ```bash

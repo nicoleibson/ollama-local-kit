@@ -34,6 +34,7 @@ INFO = {
     "qwen:latest": ("Qwen3 0.6B Base F16", "embedding", "solo /api/embed"),
     "qwen35:gpu": ("Qwen3.5 4B Q4_K_M", "2,61 tok/s", "generación, 33/33 capas GPU"),
     "qwen35:embed": ("Qwen3.5 4B + pooling_type", "embedding", "alternativa RAG, 2560 dim"),
+    "gemma4:cpu": ("Gemma 4 E4B Q2_K", "2,5 tok/s", "CPU: no cabe en la iGPU"),
 }
 
 DEFAULT_CATALOG = {

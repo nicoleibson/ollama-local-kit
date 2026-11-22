@@ -97,6 +97,7 @@ después se usa un tag. Al importar, los pesos se copian a
 | `Qwen3-Embedding-0.6B-f16.gguf` (1,2 G) | — | Innecesario, ya hay F16 |
 | `Qwen3-4B-...Q4_K_M.gguf` (2,4 G) | — | ❌ No importar: ~2 tok/s |
 | `Qwen3.5-4B-...Q4_K_M.gguf` (2,6 G) | `qwen35:gpu`, `qwen35:embed` | 2,61 tok/s; ver nota abajo |
+| `Gemma-4-E4B-...Q2_K_P.gguf` (4,2 G) | `gemma4:cpu` | 2,5 tok/s en CPU; no cabe en la iGPU |
 
 `qwen:gpu` no viene de esos archivos: es `Qwen3-0.6B-Base` F16, **solo embedding**
 (`/api/chat` y `/api/generate` responden `does not support`). `nemotron3:gpu` es
@@ -115,6 +116,20 @@ Sobre `qwen35:gpu` / `qwen35:embed` (probados el 22/11/2026):
   algo menos preciso (4/6 vs 5/6 en una prueba de recuperación con 6 temas únicos).
   `qwen35:embed` queda instalado como alternativa probada. La receta está en
   `tools/make_qwen35_embed.py` y `config/Modelfile.qwen35-embed` del repositorio.
+
+Sobre `gemma4:cpu` (probado el 22/11/2026):
+
+- Es `gemma4`, 42 bloques, 7,5 B parámetros, Q2_K, embedding 2560. Ollama 0.33.2 lo
+  reconoce y ofrece `completion`, `tools` y `thinking`.
+- **No cabe en la iGPU.** Con `num_gpu 42` carga 42/43 capas pero muere con
+  `radv/amdgpu: Not enough memory for command submission`. Bajando a 36, 32, 28, 24,
+  20, 16, 12 y 8 capas sigue fallando: el backend reserva ~0,8–1,5 GiB en Vulkan0 y
+  **~4 GiB más en `Vulkan_Host` (RAM)**, por encima de los ~3,4 GiB libres.
+- Con `num_gpu 0` y `num_ctx 512` funciona: **2,5–2,7 tok/s**, `ollama ps` muestra
+  `100% CPU` y **0,00 GiB de VRAM**, así que la R7 260X sigue intacta. El bench de la
+  CLI usa 2048 de contexto y también carga.
+- Responde de forma coherente, pero es más lento que `gemma3:q4` (9,3 tok/s) y que
+  `nemotron3:gpu` (3,6 tok/s). Se conserva como modelo de prueba, no como default.
 
 Prefiere siempre los tags `:gpu` / `:q4`: los `:latest` no tienen `num_gpu` fijo y rinden menos.
 
@@ -196,6 +211,7 @@ offloaded 27/27 layers to GPU
 | Ejecutar acciones en terminal | `ocli act` / `ocli act --free` | JSON forzado, catálogo editable |
 | Vectores para RAG | `qwen:gpu` | Solo `/api/embed`; `qwen-embed:q8` quedó opcional, no importado |
 | Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; `gemma3:q4` copia fragmentos |
+| Probar Gemma 4 (solo CPU) | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
 
 ```bash
 ollama run gemma3:q4 "¿por qué el cielo es azul?"   # una pregunta
@@ -534,6 +550,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 | Dos instancias (iGPU 8,4 + dGPU 22,7) | ~31 agregado |
 | `nemotron3:gpu` | 2,6–3,6 |
 | `qwen35:gpu` (33/33 capas en GPU) | 2,61 |
+| `gemma4:cpu` (100% CPU, 0 GiB VRAM) | 2,56 |
 
 - `OLLAMA_SCHED_SPREAD=true` **no reparte capas** en Ollama 0.33.2 + Vulkan: el modelo
   va entero a un dispositivo. Por eso se descartó usar ambas GPUs.
@@ -584,6 +601,7 @@ como experimento documentado, no como modelo de uso diario.
 | Gobernador vuelve a `powersave` o el timer está `failed` | Quitar `After=power-profiles-daemon.service` de `cpu-performance.service`, `systemctl daemon-reload`, `systemctl enable --now cpu-performance-enforce.timer`; revisar `journalctl -u cpu-performance.service` |
 | `powerprofilesctl set performance: invalid choice` | Normal: este sistema solo tiene `power-saver`/`balanced`; usar `cpupower` |
 | `does not support chat` / `generate` con qwen | Es embedding: usar `/api/embed` |
+| `Not enough memory for command submission` con `gemma4:gpu` | El modelo no cabe en la iGPU; usar `gemma4:cpu` (`num_gpu 0`) |
 | El enrutador `run` elige mal | Usar `orun --intent act\|rag\|chat ...` o revisar con `--dry-run` |
 | El chat con `--session` olvida cosas | El historial supera `num_ctx=2048`; usa `--new-session` o conversaciones más cortas |
 | Un prompt no sustituye `{{variable}}` | Pasar `--var clave=valor` o argumentos posicionales; la CLI avisa si quedan variables |
