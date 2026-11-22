@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 (quinta tanda)
+
+- Corregido `stop --all`: antes ignoraba la opción y fallaba; ahora descarga todos
+  los modelos que figuran en `/api/ps` y avisa cuando no hay ninguno cargado.
+- Autocompletado y manual actualizados con `stop --all`.
+
 ## 2026-11-22 (cuarta tanda)
 
 - Importado `Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q2_K_P.gguf` como `gemma4:cpu`.

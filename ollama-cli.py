@@ -730,6 +730,17 @@ def cmd_show(args):
 
 
 def cmd_stop(args):
+    if args.all:
+        models = [m.get("name") for m in api("/api/ps").get("models", []) if m.get("name")]
+        if not models:
+            print("No hay modelos cargados.")
+            return
+        for name in models:
+            api("/api/generate", {"model": name, "keep_alive": 0})
+            print(f"Descargado: {name}")
+        return
+    if not args.model:
+        raise SystemExit("Indica un modelo o usa --all.")
     print(sh(f"ollama stop {args.model} 2>&1") or f"Se intentó descargar {args.model}")
 
 
@@ -1341,7 +1352,8 @@ def build_parser():
     sh_.set_defaults(func=cmd_show)
 
     st = sub.add_parser("stop", help="descargar un modelo de memoria")
-    st.add_argument("model")
+    st.add_argument("model", nargs="?")
+    st.add_argument("--all", action="store_true", help="descargar todos los modelos cargados")
     st.set_defaults(func=cmd_stop)
 
     im = sub.add_parser("import", help="importar un GGUF local")

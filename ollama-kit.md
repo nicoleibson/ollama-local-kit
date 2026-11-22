@@ -54,6 +54,7 @@ ollama-cli.py bench --history                     # historial de rendimiento
 ollama-cli.py import gemma3:q2 RUTA.gguf    # importar otro GGUF local
 ollama-cli.py show gemma3:q4
 ollama-cli.py stop gemma3:q4
+ollama-cli.py stop --all                      # descargar todos los modelos cargados
 ollama-cli.py rm NOMBRE --yes
 ollama-cli.py config                        # variables efectivas y atajos
 ```

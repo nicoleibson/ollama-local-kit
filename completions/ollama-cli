@@ -162,6 +162,8 @@ _ollama_cli_complete() {
                 show|rm|list) opts="--help" ;;
                 *)    opts="--help" ;;
             esac ;;
+        stop)
+            opts="--help --all" ;;
         import)
             opts="--help --gpu --force" ;;
         rm)
