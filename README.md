@@ -89,6 +89,9 @@ oflow slide novela.txt --prompt "Continúa el resumen" --carry 300
 oflow classify contrato.md --labels rescision,confidencialidad
 oflow ask --path contrato.md "¿hay cláusula de rescisión?" -k 3
 ochat --session proyecto "hola"               # conversación persistente
+osess last                                    # comando para volver a la última
+osess resume proyecto                         # comando de otra sesión
+ochat --auto-session                          # guarda con nombre automático
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
 ```
@@ -103,7 +106,7 @@ Funciones principales de `ollama-cli.py`:
 | `rag` | indexa archivos y responde con fragmentos recuperados |
 | `run` / `do` | clasifica la intención y delega en `act`, `rag` o `chat` |
 | `prompt` | biblioteca de plantillas con variables (`{{args}}`, `{{1}}`, `{{clave}}`) |
-| `session` | listar, mostrar y borrar conversaciones guardadas |
+| `session` | listar, mostrar, borrar y devolver el comando de reanudación (`last`, `resume`) |
 | `bench` | mide tokens/s y guarda el historial (`--history`) |
 | `watch` | monitor de CPU, GPU, memoria, discos y sensores |
 | `status` / `doctor` | diagnóstico y verificación |
@@ -168,8 +171,8 @@ fuerza el servidor local, ignora las keys y traduce nombres cloud habituales
 `edit`, `bash`) que encadena llamadas al modelo mediante JSON Schema. Arranca con
 `nemotron3:gpu`, mantiene sesión y permite `/undo` de los cambios. Las
 operaciones de lectura son automáticas; escribir, editar o ejecutar comandos
-piden confirmación, y las rutas quedan confinadas a `--root`. Ver manual,
-sección 9.
+piden confirmación, y las rutas quedan confinadas a `--root`. Al salir imprime el
+comando para reabrir esa sesión con su `--root`. Ver manual, secciones 9 y 10.
 
 ## Seguridad
 

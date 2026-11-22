@@ -466,22 +466,81 @@ def session_load(name):
     return {"name": name, "model": None, "messages": []}
 
 
-def session_save(name, model, messages):
+def session_save(name, model, messages, kind="chat", root=None, no_schema=False):
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     session_path(name).write_text(json.dumps({
         "name": name,
         "model": model,
+        "kind": kind,
+        "root": root,
+        "no_schema": bool(no_schema),
         "updated": time.strftime("%Y-%m-%d %H:%M:%S"),
         "messages": messages,
     }, ensure_ascii=False, indent=2))
+
+
+def session_last_path():
+    return SESSIONS_DIR / "last.txt"
+
+
+def cli_prefix():
+    """Alias con el que hay que repetir un comando guardado."""
+    if LOCAL_ONLY:
+        return "ofree"
+    return provider_alias()
+
+
+def session_resume_command(name, kind="chat", model=None, root=None,
+                           no_schema=False):
+    parts = [cli_prefix(), kind]
+    if model:
+        parts += ["-m", shlex.quote(str(model))]
+    if root:
+        parts += ["--root", shlex.quote(str(root))]
+    if no_schema:
+        parts.append("--no-schema")
+    parts += ["--session", shlex.quote(str(name))]
+    return " ".join(parts)
+
+
+def session_announce(name, kind, count, args, root=None):
+    """Al cerrar: deja constancia del nombre y del comando para volver."""
+    command = session_resume_command(
+        name, kind, getattr(args, "model", None), root,
+        bool(getattr(args, "no_schema", False)))
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    session_last_path().write_text(command + "\n", encoding="utf-8")
+    print(f"Sesión '{name}' guardada: {count} mensajes.")
+    print(f"Para continuar: {command}")
 
 
 def cmd_session(args):
     if not SESSIONS_DIR.is_dir():
         print("No hay sesiones guardadas.")
         return
+
+    if args.action == "last":
+        path = session_last_path()
+        if not path.exists():
+            raise SystemExit("No hay constancia de una última sesión. "
+                             "Cierra una sesión con --session o 'osess list'.")
+        command = path.read_text(encoding="utf-8").strip()
+        print(f"Última sesión: {command}")
+        return
+
+    if args.action == "resume":
+        if not args.name:
+            raise SystemExit("Indica el nombre: osess resume NOMBRE")
+        data = session_load(args.name)
+        if not data["messages"]:
+            raise SystemExit(f"Sesión no encontrada o vacía: {args.name}")
+        print(session_resume_command(
+            data["name"], data.get("kind") or "chat", data.get("model"),
+            data.get("root"), bool(data.get("no_schema", False))))
+        return
+
     files = sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if args.action == "list" or not args.name:
+    if args.action == "list" or (args.action == "show" and not args.name):
         if not files:
             print("No hay sesiones guardadas.")
             return
@@ -495,6 +554,9 @@ def cmd_session(args):
             msgs = len(d.get("messages", []))
             print(f"{d.get('name', p.stem):<20} {msgs:>5}  "
                   f"{d.get('model') or '?'} / {d.get('updated', '?')}")
+        if session_last_path().exists():
+            print("\nPara volver a la última: osess last")
+        print("Para otra sesión: osess resume NOMBRE")
         return
 
     if args.action == "show":
@@ -517,6 +579,10 @@ def cmd_session(args):
                 return
         for p in targets:
             p.unlink(missing_ok=True)
+        last = session_last_path()
+        if last.exists() and (args.all or
+                              shlex.quote(args.name or "") in last.read_text()):
+            last.unlink()
         print(f"Sesiones borradas: {len(targets)}")
 
 
@@ -529,6 +595,9 @@ def cmd_chat(args):
             history = data["messages"]
             if history:
                 print(f"Sesión '{session}': {len(history)} mensajes recuperados.")
+    if not args.prompt and getattr(args, "auto_session", False) and not session:
+        session = "auto-" + time.strftime("%Y%m%d-%H%M%S")
+        print(f"Sesión automática: {session}")
     if not args.prompt:
         print("Chat interactivo. 'salir' o Ctrl+C para terminar.\n")
         while True:
@@ -556,6 +625,11 @@ def cmd_chat(args):
             history.append({"role": "assistant", "content": answer})
             if session:
                 session_save(session, args.model, history)
+        if session:
+            session_announce(session, "chat", len(history), args)
+        elif history:
+            print("Esta conversación no se guardó. Para volver, usa "
+                  "'--session NOMBRE' o '--auto-session'.")
         return
 
     prompt = " ".join(args.prompt)
@@ -584,6 +658,7 @@ def cmd_chat(args):
             {"role": "assistant", "content": answer},
         ])
         session_save(session, args.model, history)
+        session_announce(session, "chat", len(history), args)
 
 
 def prompts_load():
@@ -1916,7 +1991,8 @@ def cmd_agent(args):
                       "sal y usa el prefijo ocli/ocloud/onvidia/ogemini.")
             elif cmd == "/session" and value:
                 if session:
-                    session_save(session, args.model, history)
+                    session_save(session, args.model, history, kind="agent",
+                                 root=str(root), no_schema=args.no_schema)
                 session = value
                 args.session = session
                 history = [m for m in session_load(session)["messages"]
@@ -1970,7 +2046,11 @@ def cmd_agent(args):
             print(f"Se alcanzó el límite de {args.steps} pasos. Reformula o usa /clear.")
         history = history[-max(4, args.history):]
         if session:
-            session_save(session, args.model, history)
+            session_save(session, args.model, history, kind="agent",
+                         root=str(root), no_schema=args.no_schema)
+
+    if session:
+        session_announce(session, "agent", len(history), args, root=str(root))
 
 
 # ---------------------------------------------------------------------------
@@ -2414,7 +2494,10 @@ def build_parser():
   ollama-cli.py run --intent rag "qué dice el manual del RAG"
   ollama-cli.py watch --count 5 --interval 1        # monitor en vivo
   ollama-cli.py chat --session proyecto "hola"      # conversación persistente
+  ollama-cli.py chat --auto-session             # guarda con nombre automático
   ollama-cli.py session list
+  ollama-cli.py session last                    # comando para volver a la última
+  ollama-cli.py session resume proyecto         # comando de una sesión concreta
   ollama-cli.py prompt add resumen --text 'Resume {{args}}'
   ollama-cli.py prompt use resumen "este texto largo"
   ollama-cli.py bench --history
@@ -2450,12 +2533,15 @@ def build_parser():
     c.add_argument("--stats", action="store_true")
     c.add_argument("--format", help="JSON Schema de salida")
     c.add_argument("--session", help="guardar/recuperar la conversación con este nombre")
+    c.add_argument("--auto-session", action="store_true",
+                   help="en modo interactivo, crear un nombre automático y guardar")
     c.add_argument("--new-session", action="store_true",
                    help="empezar la sesión desde cero, borrando la anterior")
     c.set_defaults(func=cmd_chat)
 
     se = sub.add_parser("session", help="gestionar conversaciones guardadas")
-    se.add_argument("action", choices=["list", "show", "clear"], nargs="?", default="list")
+    se.add_argument("action", choices=["list", "show", "clear", "last", "resume"],
+                    nargs="?", default="list")
     se.add_argument("name", nargs="?")
     se.add_argument("--all", action="store_true", help="borrar todas las sesiones")
     se.add_argument("--yes", action="store_true", help="no pedir confirmación al borrar")

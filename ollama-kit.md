@@ -655,19 +655,35 @@ Seguridad y límites:
 interactivo como con una sola pregunta. La siguiente llamada con el mismo nombre
 recupera el contexto; `--new-session` lo descarta y empieza de cero.
 
+**Al cerrar una sesión, la CLI imprime el comando exacto para volver a ella.**
+También lo deja en `~/.ollama-sessions/last.txt`, así que no hace falta
+acordarse del nombre:
+
 ```bash
 ochat --session proyecto "responde solo con HOLA"
-ochat --session proyecto "qué palabra dije antes?"   # recupera 2 mensajes
+# Sesión 'proyecto' guardada: 2 mensajes.
+# Para continuar: ocli chat -m gemma3:q4 --session proyecto
+
+osess last                                           # el último comando guardado
+osess resume proyecto                                # comando de esa sesión
+ocli chat --auto-session                             # nombre automático si no pones --session
 ocli chat --session proyecto                         # modo interactivo
 ocli chat --session proyecto --new-session "otro tema"
 osess list                                           # sesiones y nº de mensajes
 osess show proyecto                                   # volcar la conversación
 osess clear proyecto                                  # pide confirmación
-osess clear --all --yes                               # borrar todas
+osess clear --all --yes                               # borrar todas (y el last.txt)
 ```
+
+El comando devuelto incluye el prefijo correcto según el proveedor (`ocli`,
+`ocloud`, `onvidia`, `ogemini` u `ofree`), el `-m` usado y, en el agente, `--root`
+y `--no-schema` si corresponden. Si cierras un chat sin `--session`, se avisa de
+que esa conversación no se guardó; `--auto-session` crea un nombre
+`auto-AAAAMMDD-HHMMSS`.
 
 Los archivos viven en `~/.ollama-sessions/<nombre>.json` (el nombre se normaliza a
 caracteres alfanuméricos, `-` y `_`). Son pequeños y se incluyen en el backup.
+`last.txt` es solo texto y no cuenta como sesión en `osess list`.
 
 Ojo con el contexto: `num_ctx` sigue siendo 2048. Una sesión muy larga puede
 desbordarlo; la CLI no trunca el historial automáticamente.

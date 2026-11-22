@@ -111,7 +111,7 @@ _ollama_cli_complete() {
         return
     fi
     if [[ "$sub" == session && $cword -eq 2 ]]; then
-        COMPREPLY=( $(compgen -W "list show clear --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "list show clear last resume --help" -- "$cur") )
         return
     fi
     if [[ "$sub" == prompt && $cword -eq 2 ]]; then
@@ -124,7 +124,7 @@ _ollama_cli_complete() {
     fi
 
     # Posicionales.
-    if [[ "$sub" == session && ( "$sub2" == show || "$sub2" == clear ) && "$cur" != -* ]]; then
+    if [[ "$sub" == session && ( "$sub2" == show || "$sub2" == clear || "$sub2" == resume ) && "$cur" != -* ]]; then
         COMPREPLY=( $(compgen -W "$(_ollama_cli_sessions)" -- "$cur") )
         return
     fi
@@ -157,7 +157,7 @@ _ollama_cli_complete() {
     local opts=""
     case "$sub" in
         chat|ask)
-            opts="--help --system --temperature --ctx --max-tokens --think --no-stream --stats --format --session --new-session -t -m --model" ;;
+            opts="--help --system --temperature --ctx --max-tokens --think --no-stream --stats --format --session --auto-session --new-session -t -m --model" ;;
         act)
             opts="--help --dry-run --list --free --yes --allow-dangerous --catalog -m --model" ;;
         run|do)

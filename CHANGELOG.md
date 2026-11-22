@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-11-22 (decimocuarta tanda)
+
+- Al cerrar `chat --session` (interactivo o de una sola pregunta) o el REPL
+  `agent`, la CLI imprime el comando exacto para continuar: `Para continuar: ...`.
+  Incluye el prefijo del proveedor (`ocli`, `ocloud`, `onvidia`, `ogemini`,
+  `ofree`), el `-m` usado y, en el agente, `--root` y `--no-schema`.
+- Ese comando se guarda también en `~/.ollama-sessions/last.txt`. Nuevas
+  acciones `osess last` (última sesión) y `osess resume NOMBRE` (comando de una
+  sesión concreta); `osess list` muestra cómo acceder a ellas.
+- `chat --auto-session` crea un nombre `auto-AAAAMMDD-HHMMSS` en modo
+  interactivo cuando no se da `--session`. Sin sesión, se avisa de que la
+  conversación no se guardó.
+- Corregido un fallo preexistente: `osess clear --all` sin nombre caía en la
+  rama de listado y no borraba nada. Ahora borra también `last.txt` cuando
+  procede.
+- Metadatos nuevos en los archivos de sesión (`kind`, `root`, `no_schema`) para
+  reconstruir el comando del agente. Verificado sin inferencias:
+  `/tmp/opencode/test-session.py`.
+
 ## 2026-11-22 (decimotercera tanda)
 
 - Nuevo `oflow` (`ollama-cli.py flow`, alias `oflow`) para modelos de contexto
