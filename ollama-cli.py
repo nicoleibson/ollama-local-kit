@@ -27,8 +27,10 @@ INFO = {
     "gemma3:latest": ("Gemma 3 1B (sin num_gpu)", "~7 tok/s", "peor que :gpu"),
     "nemotron3:gpu": ("Nemotron-H 4B IQ2_M", "2,6 tok/s", "razonamiento complejo"),
     "nemotron3:latest": ("Nemotron-H 4B (sin num_gpu)", "~2 tok/s", "peor que :gpu"),
-    "qwen:gpu": ("Qwen3 0.6B Base F16", "embedding", "solo /api/embed"),
+    "qwen:gpu": ("Qwen3 0.6B Base F16", "embedding", "solo /api/embed; default RAG"),
     "qwen:latest": ("Qwen3 0.6B Base F16", "embedding", "solo /api/embed"),
+    "qwen35:gpu": ("Qwen3.5 4B Q4_K_M", "2,61 tok/s", "generación, 33/33 capas GPU"),
+    "qwen35:embed": ("Qwen3.5 4B + pooling_type", "embedding", "alternativa RAG, 2560 dim"),
 }
 
 DEFAULT_CATALOG = {

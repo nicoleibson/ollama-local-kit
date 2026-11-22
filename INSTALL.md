@@ -122,6 +122,31 @@ ocli import nemotron3:gpu /ruta/nemotron...gguf
 `qwen:gpu` se usa solo para embeddings. No lo llames con `/api/chat` ni
 `/api/generate`; usa `/api/embed` o `ocli embed` / `ocli rag`.
 
+### Qwen3.5-4B (opcional)
+
+El GGUF original se importa tal cual como modelo generativo. Necesita `num_gpu 33`
+para cargar todas las capas en la iGPU:
+
+```bash
+# Ajusta la ruta FROM en config/Modelfile.qwen35-gpu si hace falta
+ollama create qwen35:gpu -f config/Modelfile.qwen35-gpu
+ollama ps    # debe mostrar 100% GPU
+```
+
+Para usarlo como embedder hay que parchear una **copia** del GGUF (nunca el original):
+
+```bash
+python3 tools/make_qwen35_embed.py 3 /ruta/Qwen3.5-4B-Embed-Q4_K_M.gguf
+# Ajusta la ruta FROM en config/Modelfile.qwen35-embed
+ollama create qwen35:embed -f config/Modelfile.qwen35-embed
+ollama show qwen35:embed | grep embedding
+```
+
+El script añade `qwen35.pooling_type` y 61 bytes de relleno para conservar la
+alineación a 32 bytes que exige llama.cpp. El Modelfile fija `num_ctx 512` porque
+con 2048 se agota la VRAM compartida. No se recomienda como default de RAG: es ~5x
+más lento y menos preciso que `qwen:gpu`.
+
 ## 8. Verificación final
 
 ```bash

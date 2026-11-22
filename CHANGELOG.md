@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-22 (segunda tanda)
+
+- Importado `Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf` como `qwen35:gpu`.
+  Con `num_gpu 33` carga 33/33 capas en la iGPU (100% GPU, 2,66 GiB VRAM, 2,61 tok/s);
+  con 32 dejaba una capa en CPU. `nemotron3:gpu` se conserva como modelo principal.
+- Añadido `qwen35:embed`: copia del GGUF con `qwen35.pooling_type=3` (96 bytes de
+  metadato para mantener la alineación a 32 bytes) y `num_ctx 512`. Sin ese metadato
+  Ollama 0.33.2 responde `HTTP 501` en `/api/embed`; con 2048 de contexto hay OOM.
+- Comparados `pooling_type` 3/1/2 y `qwen:gpu`: el embedder específico sigue ganando
+  (5/6 vs 4/6 en top-1, MRR 0,917 vs 0,806, ~5x más rápido). Se mantiene `qwen:gpu`
+  como default de RAG y se desinstalan las variantes `mean` y `cls`.
+- Añadidos `tools/make_qwen35_embed.py` y `config/Modelfile.qwen35-embed` para
+  reproducir el parche sin tocar el GGUF original.
+
 ## 2026-11-22
 
 - Añadido `run` / `orun`: enrutador que clasifica la intención (`act`, `rag`, `chat`)

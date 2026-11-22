@@ -30,10 +30,18 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 | `gemma3:q4` | chat rápido y catálogos cortos | 9,3–9,8 tok/s |
 | `gemma3:gpu` | redacción con más calidad (Q6_K) | 7,8 tok/s |
 | `nemotron3:gpu` | razonamiento, `act`, RAG, enrutador | ~2,6–3,5 tok/s |
-| `qwen:gpu` | embeddings (solo `/api/embed`) | 1024 dimensiones |
+| `qwen:gpu` | embeddings (solo `/api/embed`) | 1024 dimensiones, ~1 s / 5 textos |
+| `qwen35:gpu` | generación alternativa, 100% GPU | 2,61 tok/s, 2,66 GiB VRAM |
+| `qwen35:embed` | embeddings alternativos (no recomendado) | 2560 dimensiones, ~5 s / 5 textos |
 
 `qwen:latest`, `gemma3:latest` y `nemotron3:latest` rinden menos: no tienen
 `num_gpu` fijo en el Modelfile.
+
+Qwen3.5-4B se importó y se probó como reemplazo de `qwen:gpu`, pero **no se adoptó**
+para RAG: es ~5x más lento y menos preciso (4/6 vs 5/6 en recuperación). Se conserva
+instalado como alternativa. El GGUF original no se modificó; `qwen35:embed` usa una copia
+con `qwen35.pooling_type=3` generada por [`tools/make_qwen35_embed.py`](tools/make_qwen35_embed.py).
+Detalles y comparativa completa en [`ollama-kit.md`](ollama-kit.md).
 
 ## Inicio rápido
 
@@ -90,7 +98,8 @@ ollama-bench.sh                Benchmark independiente
 ollama-act.py                  Executor antiguo (6 comandos, legado)
 ollama-scripts/                16 scripts ejecutables por el modelo
 completions/ollama-cli         Autocompletado para bash
-config/                        Drop-ins de systemd, sysctl y Modelfile
+config/                        Drop-ins de systemd, sysctl y Modelfiles
+tools/make_qwen35_embed.py     Receta para habilitar embeddings en Qwen3.5
 ```
 
 ## Instalación

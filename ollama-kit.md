@@ -87,11 +87,25 @@ después se usa un tag. Al importar, los pesos se copian a
 | `Qwen3-Embedding-0.6B-Q8_0.gguf` (610 M) | `qwen-embed:q8` (si se importa) | Embeddings, menos RAM |
 | `Qwen3-Embedding-0.6B-f16.gguf` (1,2 G) | — | Innecesario, ya hay F16 |
 | `Qwen3-4B-...Q4_K_M.gguf` (2,4 G) | — | ❌ No importar: ~2 tok/s |
-| `Qwen3.5-4B-...Q4_K_M.gguf` (2,6 G) | — | ❌ No importar: ~2 tok/s |
+| `Qwen3.5-4B-...Q4_K_M.gguf` (2,6 G) | `qwen35:gpu`, `qwen35:embed` | 2,61 tok/s; ver nota abajo |
 
 `qwen:gpu` no viene de esos archivos: es `Qwen3-0.6B-Base` F16, **solo embedding**
 (`/api/chat` y `/api/generate` responden `does not support`). `nemotron3:gpu` es
-Nemotron-H 4B IQ2_M, 2,6 tok/s, solo para tareas puntuales.
+Nemotron-H 4B IQ2_M, 2,6–3,6 tok/s, modelo principal de razonamiento, `act`, RAG y enrutador.
+
+Sobre `qwen35:gpu` / `qwen35:embed` (probados el 22/11/2026):
+
+- `qwen35:gpu` usa el GGUF original con `num_gpu 33` → **33/33 capas en GPU**, 100% GPU,
+  2,66 GiB de VRAM y 2,61 tok/s. Con `num_gpu 32` solo cargaban 32/33 capas (18%/82%
+  CPU/GPU). Es un modelo generativo con capacidades `tools`, `thinking`, `completion`.
+- `qwen35:embed` parte de una copia del GGUF con el metadato añadido
+  `qwen35.pooling_type = 3`, porque Ollama 0.33.2 solo habilita `/api/embed` si el GGUF
+  declara `pooling_type`. Requiere `num_ctx 512`: con 2048 se agota la VRAM compartida.
+  Genera vectores de **2560 dimensiones** y tiene capability `embedding` (ya no `completion`).
+- **Decisión:** RAG sigue usando `qwen:gpu`. Qwen3.5 es ~5x más lento como embedder y
+  algo menos preciso (4/6 vs 5/6 en una prueba de recuperación con 6 temas únicos).
+  `qwen35:embed` queda instalado como alternativa probada. La receta está en
+  `tools/make_qwen35_embed.py` y `config/Modelfile.qwen35-embed` del repositorio.
 
 Prefiere siempre los tags `:gpu` / `:q4`: los `:latest` no tienen `num_gpu` fijo y rinden menos.
 
@@ -325,6 +339,18 @@ Opciones principales de `rag ask`:
 | `--ctx` | `2048` | contexto del modelo chat |
 | `--max-tokens` | `384` | longitud máxima de la respuesta |
 | `--context-chars` | `3600` | tope de texto recuperado inyectado |
+
+Para usar la alternativa Qwen3.5 hay que reindexar **todo** el índice con el mismo modelo
+(no se pueden mezclar vectores de 1024 y 2560 dimensiones):
+
+```bash
+orag index manual.md scripts/ --embed-model qwen35:embed
+orag ask "cómo funciona el modo act" --embed-model qwen35:embed
+```
+
+No se recomienda cambiar el default: `qwen:gpu` es más rápido y preciso. Si se cambia,
+hay que actualizar también `-m/--model` de `embed`, el default de `rag index` y la opción
+`--embed-model` del autocompletado.
 | `--no-stream` | no | imprimir la respuesta de una vez |
 
 **Cómo funciona:**
@@ -430,12 +456,26 @@ curl -s http://127.0.0.1:11434/api/embed \
 | CPU con gobernador powersave | 4,2 |
 | BONAIRE (dGPU, descartada) | ~35 |
 | Dos instancias (iGPU 8,4 + dGPU 22,7) | ~31 agregado |
-| `nemotron3:gpu` | 2,6 |
+| `nemotron3:gpu` | 2,6–3,6 |
+| `qwen35:gpu` (33/33 capas en GPU) | 2,61 |
 
 - `OLLAMA_SCHED_SPREAD=true` **no reparte capas** en Ollama 0.33.2 + Vulkan: el modelo
   va entero a un dispositivo. Por eso se descartó usar ambas GPUs.
 - Tool calling nativo con Gemma 1B: descartado (ver sección 5).
-- Los GGUF 4B locales no se importan: con 2 GB de VRAM y 6,7 GB de RAM rinden peor que `nemotron3`.
+- Los GGUF 4B locales rinden peor que `nemotron3` en generación (Qwen3.5: 2,61 tok/s),
+  pero `qwen35:gpu` sí se importó y sirve como modelo alternativo con 100% GPU.
+- Comparativa de embeddings (misma prueba de 6 preguntas, 6 documentos de un solo tema):
+
+| Modelo | Dimensiones | top-1 | MRR | Tiempo |
+|---|---:|---:|---:|---:|
+| `qwen:gpu` | 1024 | **5/6** | **0,917** | ~1 s |
+| `qwen35:embed` (`pooling_type=3`) | 2560 | 4/6 | 0,806 | ~5 s |
+| `qwen35:mean` (`pooling_type=1`) | 2560 | 3/6 | 0,722 | ~5 s |
+| `qwen35:cls` (`pooling_type=2`) | 2560 | 1/6 | 0,350 | ~5 s |
+
+  Las variantes `mean` y `cls` se desinstalaron; solo queda `qwen35:embed` (la mejor de
+  las tres variantes de Qwen3.5). El parche del GGUF inserta 96 bytes de metadato para
+  conservar la alineación a 32 bytes; con 35 bytes llama.cpp rechaza el archivo.
 
 ---
 
