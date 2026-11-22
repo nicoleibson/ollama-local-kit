@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-22 (decimonovena tanda)
+
+- Añadido `config/Modelfile.nemotron3-gpu`: ruta canónica en
+  `~/Documentos/ModelsIA/`, `num_gpu 43`, `num_ctx 2048` y `temperature 0.3`,
+  igual que el modelo instalado. Documentado en `INSTALL.md`.
+- Ordenados los GGUF del equipo: `InstallApps/IALocal/` contenía copias de
+  `gemma3:gpu` y `qwen:gpu` y el único GGUF suelto de Nemotron. Tras copiar y
+  verificar este último por hash en `ModelsIA`, se borró `IALocal/` (~4,1 GiB)
+  sin afectar a los modelos de Ollama.
+
 ## 2026-11-22 (decimoctava tanda)
 
 - **Perfil de tareas por defecto**: `gemma3:gpu` atiende `chat`, `act`, `run`,

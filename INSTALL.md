@@ -124,6 +124,11 @@ ocli import gemma3:gpu /ruta/Gemma-...-Q6_k.gguf --gpu 27
 ocli import nemotron3:gpu /ruta/nemotron...gguf
 ```
 
+`config/Modelfile.nemotron3-gpu` es la receta canónica para el respaldo de
+razonamiento: apunta al GGUF de `~/Documentos/ModelsIA/` y fija `num_gpu 43`,
+`num_ctx 2048` y `temperature 0.3`, igual que el modelo instalado. Permite
+recrearlo sin depender del directorio de importación original.
+
 `qwen:gpu` se usa solo para embeddings. No lo llames con `/api/chat` ni
 `/api/generate`; usa `/api/embed` o `ocli embed` / `ocli rag`.
 
