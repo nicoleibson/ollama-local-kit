@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# Ejecutor de acciones con gemma3:q4 + structured output (JSON Schema).
+# Ejecutor de acciones con gemma3:gpu (Q6_K) + structured output (JSON Schema).
 # El modelo genera solo 6-7 tokens: {"command":"..."}. Nada de prosa ni <think>.
 import json, os, subprocess, sys, urllib.request
 
-MODEL = "gemma3:q4"
+MODEL = "gemma3:gpu"
 HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 URL = HOST + "/api/chat"
 

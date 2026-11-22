@@ -9,9 +9,9 @@ en marcha; se conserva como referencia para reproducirlo tras una reinstalación
 ## TL;DR — lo que más usarás
 
 ```bash
-ollama run gemma3:q4 "tu pregunta"        # chat rápido (9,3 tok/s)
+ollama run gemma3:gpu "tu pregunta"       # principal: más exactitud (7,8 tok/s)
 ~/ollama-act.py "muestra la fecha"        # ejecutar acción (6-8 tokens)
-~/ollama-bench.sh gemma3:q4               # medir velocidad
+~/ollama-bench.sh gemma3:gpu              # medir velocidad
 orag index /home/onion/ollama-kit.md      # indexar archivos para RAG
 orag ask "cómo funciona el modo act"      # preguntar sobre lo indexado
 orun "muestra la fecha"                   # enrutador: act / rag / chat
@@ -100,8 +100,8 @@ después se usa un tag. Al importar, los pesos se copian a
 
 | GGUF en `/home/onion/Documentos/ModelsIA/` | Tag | Uso |
 |---|---|---|
-| `Gemma-...-Q6_k.gguf` (965 M) | `gemma3:gpu`, `gemma3:latest` | Calidad, 7,8 tok/s |
-| `Gemma-...-Q4_k_m.gguf` (769 M) | **`gemma3:q4`** | Principal, 9,3 tok/s |
+| `Gemma-...-Q6_k.gguf` (965 M) | **`gemma3:gpu`**, `gemma3:latest` | **Principal**, 7,8 tok/s |
+| `Gemma-...-Q4_k_m.gguf` (769 M) | `gemma3:q4` | Alternativa rápida, 9,3 tok/s |
 | `Gemma-...-Q2_k.gguf` (658 M) | — | Solo emergencia, baja calidad |
 | `Qwen3-Embedding-0.6B-Q8_0.gguf` (610 M) | `qwen-embed:q8` (si se importa) | Embeddings, menos RAM |
 | `Qwen3-Embedding-0.6B-f16.gguf` (1,2 G) | — | Innecesario, ya hay F16 |
@@ -215,20 +215,28 @@ offloaded 27/27 layers to GPU
 
 | Necesitas | Modelo | Por qué |
 |---|---|---|
-| Chat/consultas rápidas | `gemma3:q4` | 9,3 tok/s, responde bien y ocupa poca VRAM |
-| Redacción con más precisión | `gemma3:gpu` | Q6_K, 7,8 tok/s |
+| Chat, redacción, `oflow`, acciones | `gemma3:gpu` | Q6_K (uncensored): principal; más exactitud, 7,8 tok/s |
+| Máxima velocidad | `gemma3:q4` | Q4_K_M, 9,3 tok/s; misma base, algo menos de calidad |
 | Razonamiento más complejo | `nemotron3:gpu` | 4B, pero 2,6 tok/s |
 | Ejecutar acciones en terminal | `ocli act` / `ocli act --free` | JSON forzado, catálogo editable |
 | Vectores para RAG | `qwen:gpu` | Solo `/api/embed`; `qwen-embed:q8` quedó opcional, no importado |
-| Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; `gemma3:q4` copia fragmentos |
+| Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; los Gemma 1B copian fragmentos |
 | Probar Gemma 4 en la R7 260X | `odgpu` → `gemma4:dgpu` | 8,5 tok/s, instancia aislada; no cambia el default |
 | Probar Gemma 4 en CPU | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
 | Código/razonamiento muy largo | `ocloud` → `glm-5.3`, `kimi-k2.7-code` | nube bajo demanda, sin VRAM; consume créditos |
 
+**Decisión de exactitud (22/11/2026):** el principal pasa a ser `gemma3:gpu`
+(Q6_K, uncensored) en chat, `oflow`, acciones y explicaciones: es el mismo modelo
+y fine-tune que `gemma3:q4`, pero la cuantización de 6 bits conserva mejor los
+pesos que la de 4 bits. El coste es pasar de 9,3 a 7,8 tok/s. `nemotron3:gpu`
+sigue siendo el modelo de razonamiento, agente, RAG, enrutador, `code review` y
+`commit`: no hay en la carpeta ningún candidato medido que lo supere. Los
+embeddings siguen con `qwen:gpu` y Gemma 4 queda para uso puntual.
+
 ```bash
-ollama run gemma3:q4 "¿por qué el cielo es azul?"   # una pregunta
-ollama run gemma3:q4                                # interactivo: /clear, /bye
-ollama run gemma3:gpu "reescribe esto con más precisión: ..."
+ollama run gemma3:gpu "¿por qué el cielo es azul?"  # una pregunta
+ollama run gemma3:gpu                               # interactivo: /clear, /bye
+ollama run gemma3:q4 "respuesta rápida: ..."        # alternativa más veloz
 ```
 
 Reglas prácticas:
@@ -296,7 +304,7 @@ Equivalente por API (catálogo corto):
 
 ```bash
 curl -s http://127.0.0.1:11434/api/chat -d '{
-  "model":"gemma3:q4",
+  "model":"gemma3:gpu",
   "stream":false,
   "think":false,
   "format":{"type":"object","properties":{"command":{"type":"string","enum":["date","pwd","free"]}},"required":["command"]},
@@ -405,7 +413,8 @@ hay que actualizar también `-m/--model` de `embed`, el default de `rag index` y
    mejores como contexto y el modelo chat sintetiza la respuesta citando `[1]`, `[2]`...
 
 **Modelos:** el embedding siempre es `qwen:gpu` (solo `/api/embed`). Para redactar,
-el predeterminado es `nemotron3:gpu`: con `gemma3:q4` el Gemma 1B tiende a copiar
+el predeterminado es `nemotron3:gpu`: con los Gemma 1B (`gemma3:q4` y `:gpu`)
+tiende a copiar
 los fragmentos en vez de resumirlos. Como `OLLAMA_MAX_LOADED_MODELS=1`, al pasar de
 embeddings a chat Ollama descarga `qwen:gpu` y carga el modelo chat; eso añade un
 par de segundos por consulta y es normal ver `ollama ps` con un solo modelo.
@@ -516,7 +525,7 @@ son con `think:false`.
 
 | Tarea | Modelo | Por qué |
 |---|---|---|
-| Iterar rápido, explicar errores | `gemma3:q4` | 9,3 tok/s |
+| Iterar, explicar errores y generar tests | `gemma3:gpu` | Q6_K, más exacto, 7,8 tok/s |
 | Revisar código, arquitectura, diffs | `nemotron3:gpu` | razona mejor |
 | Código extenso o respuesta larga | `odgpu` → `gemma4:dgpu` | 8,5 tok/s en dGPU aislada |
 | Buscar en tu propio código | `qwen:gpu` + `nemotron3:gpu` | embeddings + RAG |
@@ -539,8 +548,8 @@ ocode review archivo.py --dry-run      # ver system, prompt y schema sin llamar 
 | Acción | Modelo | JSON devuelto |
 |---|---|---|
 | `review` | `nemotron3:gpu` | `problemas[]` (severidad, sugerencia) + `resumen` |
-| `tests` | `gemma3:q4` | `tests`, `casos[]`, `notas` |
-| `explain` | `gemma3:q4` | `explicacion`, `mejoras[]` |
+| `tests` | `gemma3:gpu` | `tests`, `casos[]`, `notas` |
+| `explain` | `gemma3:gpu` | `explicacion`, `mejoras[]` |
 | `commit` | `nemotron3:gpu` | `tipo`, `alcance`, `mensaje`, `cuerpo` |
 
 Opciones útiles: `--from/--start` y `--lines` para trocear, `--stdin`, `-m` para
@@ -556,7 +565,7 @@ la CLI avisa de que puede desbordar el contexto.
 ```bash
 orag index /home/onion/ollama-local-kit
 orag ask "¿dónde se guardan las sesiones de chat?" -k 4
-orag ask "cómo funciona el modo act" -m gemma3:q4 -k 3
+orag ask "cómo funciona el modo act" -m gemma3:gpu -k 3
 ```
 
 ### `act` ampliado y selftest
@@ -662,7 +671,7 @@ acordarse del nombre:
 ```bash
 ochat --session proyecto "responde solo con HOLA"
 # Sesión 'proyecto' guardada: 2 mensajes.
-# Para continuar: ocli chat -m gemma3:q4 --session proyecto
+# Para continuar: ocli chat -m gemma3:gpu --session proyecto
 
 osess last                                           # el último comando guardado
 osess resume proyecto                                # comando de esa sesión
@@ -735,11 +744,11 @@ o los parámetros de un Modelfile.
 ```bash
 # Generar texto
 curl -s http://127.0.0.1:11434/api/generate \
-  -d '{"model":"gemma3:q4","prompt":"hola","stream":false,"options":{"num_predict":40}}'
+  -d '{"model":"gemma3:gpu","prompt":"hola","stream":false,"options":{"num_predict":40}}'
 
 # Chat con historial
 curl -s http://127.0.0.1:11434/api/chat \
-  -d '{"model":"gemma3:q4","stream":false,"messages":[{"role":"user","content":"hola"}]}'
+  -d '{"model":"gemma3:gpu","stream":false,"messages":[{"role":"user","content":"hola"}]}'
 
 # Embeddings (NO usar /api/chat ni /api/generate con qwen)
 curl -s http://127.0.0.1:11434/api/embed \
@@ -796,7 +805,7 @@ ofree agent --root ~/ollama-local-kit         # agente local, sin créditos
 `ofree` fuerza `OLLAMA_KIT_LOCAL=1`, borra las variables de key y traduce los
 nombres cloud habituales a modelos locales (`glm-5.3-flash`, `glm-5.3`,
 `kimi-k2.7-code`, `deepseek-v4.1-flash`, `nemotron-3-super` → `nemotron3:gpu`;
-`beam`, `clef:27b` → `gemma3:q4`; `gemma4:31b`/`gemma4:cloud` → `gemma4:cpu`).
+`beam`, `clef:27b` → `gemma3:gpu`; `gemma4:31b`/`gemma4:cloud` → `gemma4:cpu`).
 Un modelo que no esté en esa tabla se pasa tal cual, así que conviene usar los
 nombres que muestra `ocli list`. Si una llamada cloud devuelve el error de
 créditos, la CLI añade el aviso de usar `ofree`.
@@ -820,7 +829,7 @@ créditos, la CLI añade el aviso de usar `ofree`.
    de diffs grandes, generación de tests y explicación de repos completos.
 2. **Fijar el conocimiento en local:** guarda las decisiones con
    `ocli prompt add ...` e indexa el repo con `orag index DIRECTORIO`.
-3. **Iterar en local:** `nemotron3:gpu` para revisar, `gemma3:q4` para
+3. **Iterar en local:** `nemotron3:gpu` para revisar, `gemma3:gpu` para
    tests/explicaciones y `odgpu` para generación larga puntual.
 4. **Volver a cloud solo cuando el local se quede corto** por contexto o
    razonamiento. Así el gasto se limita a la fase de diseño.
@@ -900,7 +909,7 @@ Detalles operativos:
 
 ## 12. `oflow`: flujos con modelos de contexto corto
 
-Tu hardware no puede pasarle un libro entero a `gemma3:q4` (2048 tokens de
+Tu hardware no puede pasarle un libro entero a `gemma3:gpu` (2048 tokens de
 contexto). `oflow` invierte la responsabilidad: **el modelo no recuerda nada; la
 herramienta guarda el estado en disco**. Cada llamada recibe un fragmento y, como
 mucho, un resumen parcial; nunca el documento completo. Es local por diseño: los
@@ -956,7 +965,7 @@ fragmento, la firma no coincide y pide `--restart` (o usa otro `--out`).
   hasta `--context-chars`. **No escribe** `~/.ollama-rag/index.json`: cada
   documento tiene su propia búsqueda en memoria.
 
-Opciones comunes: `-m` (default `gemma3:q4`), `--chunk-chars` (700), `--overlap`
+Opciones comunes: `-m` (default `gemma3:gpu`), `--chunk-chars` (700), `--overlap`
 (100), `--ctx` (2048), `--max-tokens` (256), `-t` (0), `--out`, `--restart`.
 En `ask`: `--path` (obligatorio), `--embed-model`, `-k` (3) y `--context-chars`
 (3600).

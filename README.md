@@ -27,8 +27,8 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 
 | Modelo | Uso | Rendimiento medido |
 |---|---|---|
-| `gemma3:q4` | chat rápido y catálogos cortos | 9,3–9,8 tok/s |
-| `gemma3:gpu` | redacción con más calidad (Q6_K) | 7,8 tok/s |
+| `gemma3:gpu` | **principal**: chat, `oflow`, acciones, tests (Q6_K uncensored) | 7,8 tok/s |
+| `gemma3:q4` | alternativa rápida (Q4_K_M) | 9,3–9,8 tok/s |
 | `nemotron3:gpu` | razonamiento, `act`, RAG, enrutador | ~2,6–3,5 tok/s |
 | `qwen:gpu` | embeddings (solo `/api/embed`) | 1024 dimensiones, ~1 s / 5 textos |
 | `qwen35:gpu` | generación alternativa, 100% GPU | 2,61 tok/s, 2,66 GiB VRAM |

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-22 (decimoquinta tanda)
+
+- `gemma3:gpu` (Q6_K, uncensored) pasa a ser el modelo principal en `chat`/`ask`,
+  `flow`/`oflow`, catálogo corto de `act`, enrutador `run`, `code tests` y
+  `code explain`. Misma base y fine-tune que `gemma3:q4`, pero Q6_K conserva
+  mejor los pesos; el coste es bajar de 9,3 a 7,8 tok/s.
+- Se mantienen `nemotron3:gpu` en razonamiento, agente, RAG, enrutador, `code
+  review` y `commit`; `qwen:gpu` en embeddings; Gemma 4 en uso puntual. Los
+  mapas de `ofree` (`beam`, `clef:27b`) apuntan al nuevo principal.
+- `ocli config` muestra ahora los defaults por rol. Actualizados manual, README,
+  INSTALL, `ollama-act.py` y los tests de defaults/sesiones/flujos.
+- No se importaron GGUF nuevos ni se lanzaron inferencias. La comparativa
+  descartó cambiar Nemotron: ningún modelo de la carpeta lo supera con datos
+  medidos, y `qwen35:embed` fue peor en recuperación (4/6 frente a 5/6).
+
 ## 2026-11-22 (decimocuarta tanda)
 
 - Al cerrar `chat --session` (interactivo o de una sola pregunta) o el REPL

@@ -71,11 +71,11 @@ FREE_MODEL_MAP = {
     "kimi-k2.7-code": "nemotron3:gpu",
     "deepseek-v4.1-flash": "nemotron3:gpu",
     "deepseek-v4.1-flash:1017": "nemotron3:gpu",
-    "beam": "gemma3:q4",
+    "beam": "gemma3:gpu",
     "gemma4:31b": "gemma4:cpu",
     "gemma4:cloud": "gemma4:cpu",
     "nemotron-3-super": "nemotron3:gpu",
-    "clef:27b": "gemma3:q4",
+    "clef:27b": "gemma3:gpu",
 }
 
 
@@ -89,12 +89,12 @@ PROVIDER_DEFAULT_MODELS = {
     "nvidia": "nvidia/nemotron-3.5-lightning-30b-a3b",
 }
 LOCAL_DEFAULT_MODELS = {
-    "chat": "gemma3:q4",
-    "ask": "gemma3:q4",
+    "chat": "gemma3:gpu",
+    "ask": "gemma3:gpu",
     "agent": "nemotron3:gpu",
     "rag": "nemotron3:gpu",
-    "flow": "gemma3:q4",
-    "oflow": "gemma3:q4",
+    "flow": "gemma3:gpu",
+    "oflow": "gemma3:gpu",
 }
 
 
@@ -205,8 +205,8 @@ UNDO_DIR = Path.home() / ".ollama-agent-undo"
 DEBUG = False
 
 INFO = {
-    "gemma3:q4": ("Gemma 3 1B Q4_K_M", "9,3 tok/s", "chat rápido y acciones"),
-    "gemma3:gpu": ("Gemma 3 1B Q6_K", "7,8 tok/s", "más calidad en chat"),
+    "gemma3:q4": ("Gemma 3 1B Q4_K_M", "9,3 tok/s", "alternativa rápida"),
+    "gemma3:gpu": ("Gemma 3 1B Q6_K", "7,8 tok/s", "principal: más calidad en chat"),
     "gemma3:latest": ("Gemma 3 1B (sin num_gpu)", "~7 tok/s", "peor que :gpu"),
     "nemotron3:gpu": ("Nemotron-H 4B IQ2_M", "2,6 tok/s", "razonamiento complejo"),
     "nemotron3:latest": ("Nemotron-H 4B (sin num_gpu)", "~2 tok/s", "peor que :gpu"),
@@ -741,7 +741,7 @@ def cmd_prompt(args):
         print("Aviso: quedan variables sin sustituir en el prompt.", file=sys.stderr)
 
     ns = argparse.Namespace(
-        prompt=[prompt], model=args.model or item.get("model") or "gemma3:q4",
+        prompt=[prompt], model=args.model or item.get("model") or "gemma3:gpu",
         system=args.system or item.get("system"), temperature=0.3, ctx=2048,
         max_tokens=512, think=False, no_stream=args.no_stream, stats=args.stats,
         format=None, session=args.session, new_session=False,
@@ -798,7 +798,7 @@ def cmd_act(args):
         raise SystemExit("Escribe la instrucción. Ej: ollama-cli.py act 'muestra la fecha'")
 
     # Con catálogos grandes o modo libre, el Gemma 1B se confunde: usar el 4B.
-    model = args.model or ("nemotron3:gpu" if (args.free or len(catalog) > 8) else "gemma3:q4")
+    model = args.model or ("nemotron3:gpu" if (args.free or len(catalog) > 8) else "gemma3:gpu")
 
     if args.free:
         fmt = {
@@ -1207,6 +1207,9 @@ def cmd_config(args):
     print(f"API key: {'configurada' if API_KEY else f'no configurada ({PROVIDER_KEYVARS[PROVIDER]})'}")
     if PROVIDER in PROVIDER_DEFAULT_MODELS:
         print(f"Modelo por defecto: {PROVIDER_DEFAULT_MODELS[PROVIDER]}")
+    else:
+        print("Modelos por defecto: chat/flow=gemma3:gpu, "
+              "razonamiento/agente/RAG=nemotron3:gpu, embeddings=qwen:gpu")
     if EXTERNAL:
         print(f"Archivo de key: {PROVIDER_KEYFILES[PROVIDER]}")
     print(f"Overrides: {OVERRIDE}")
@@ -1650,7 +1653,7 @@ def cmd_run(args):
         return
 
     ns = argparse.Namespace(
-        prompt=text.split(), model=args.model or "gemma3:q4",
+        prompt=text.split(), model=args.model or "gemma3:gpu",
         system=args.system, temperature=0.3, ctx=2048, max_tokens=512,
         think=False, no_stream=args.no_stream, stats=args.stats, format=None,
     )
@@ -2522,7 +2525,7 @@ def build_parser():
     c = sub.add_parser("chat", aliases=["ask"], help="chatear (sin prompt = interactivo)")
     c.add_argument("prompt", nargs="*")
     c.add_argument("-m", "--model", default=None,
-                   help="por defecto: gemma3:q4 en local, "
+                   help="por defecto: gemma3:gpu en local, "
                         "nvidia/nemotron-3.5-lightning-30b-a3b en NVIDIA")
     c.add_argument("--system", help="mensaje de sistema")
     c.add_argument("-t", "--temperature", type=float, default=0.3)
@@ -2605,7 +2608,7 @@ def build_parser():
     a = sub.add_parser("act", help="ejecutar acción en lenguaje natural")
     a.add_argument("text", nargs="*")
     a.add_argument("-m", "--model", default=None,
-                   help="por defecto: gemma3:q4 si el catálogo es corto, nemotron3:gpu si es largo o --free")
+                   help="por defecto: gemma3:gpu si el catálogo es corto, nemotron3:gpu si es largo o --free")
     a.add_argument("--dry-run", action="store_true")
     a.add_argument("--list", action="store_true")
     a.add_argument("--free", action="store_true",
@@ -2727,7 +2730,7 @@ def build_parser():
 
     def flow_common(sp):
         sp.add_argument("-m", "--model", default=None,
-                        help="modelo local (default: gemma3:q4)")
+                        help="modelo local (default: gemma3:gpu)")
         sp.add_argument("--chunk-chars", type=int, default=700)
         sp.add_argument("--overlap", type=int, default=100)
         sp.add_argument("--ctx", type=int, default=2048)
@@ -2816,7 +2819,7 @@ CODE_ACTIONS = {
         },
     },
     "tests": {
-        "model": "gemma3:q4",
+        "model": "gemma3:gpu",
         "max_tokens": 640,
         "system": "Escribes tests unitarios claros y minimalistas en pytest.",
         "template": (
@@ -2835,7 +2838,7 @@ CODE_ACTIONS = {
         },
     },
     "explain": {
-        "model": "gemma3:q4",
+        "model": "gemma3:gpu",
         "max_tokens": 512,
         "system": "Explicas código con palabras sencillas y sin rodeos.",
         "template": (

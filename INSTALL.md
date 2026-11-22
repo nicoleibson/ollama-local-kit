@@ -112,6 +112,10 @@ del GGUF a tu equipo antes de importarlo:
 ollama create gemma3:q4 -f config/Modelfile.gemma-q4
 ```
 
+`gemma3:gpu` (Q6_K) es el modelo principal por exactitud; se crea importando el
+GGUF `...Q6_k.gguf` con `ocli import gemma3:gpu /ruta/al/Q6_k.gguf --gpu 27`.
+`gemma3:q4` se conserva como alternativa rápida.
+
 Para otros modelos locales usa la propia CLI:
 
 ```bash
@@ -160,7 +164,7 @@ ollama ps    # 100% CPU, 0.00 GiB VRAM
 ocli bench gemma4:cpu --tokens 20
 ```
 
-Rinde ~2,5 tok/s. No se recomienda como modelo principal: `gemma3:q4` es ~4x más
+Rinde ~2,5 tok/s. No se recomienda como modelo principal: `gemma3:gpu` es ~3x más
 rápido y usa la iGPU. Se conserva solo para probar la arquitectura `gemma4`.
 
 ### Gemma 4 en la R7 260X (opcional, aislada)
