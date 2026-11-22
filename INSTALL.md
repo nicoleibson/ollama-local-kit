@@ -199,6 +199,10 @@ ocli session list
 ocli prompt add resumen --text 'Resume: {{args}}'
 ocli prompt use resumen "texto de prueba" --no-stream
 ocli bench --history
+ocli code review ~/ollama-cli.py --lines 20 --dry-run
+ocode tests "def suma(a,b): return a+b" --no-stream
+bash ~/ollama-scripts/selftest.sh
+odebug -n 5
 ```
 
 `ocli doctor` debe terminar con **TODO CORRECTO**. El único aviso habitual es
@@ -221,7 +225,7 @@ sudo systemctl restart ollama
 rm -f ~/ollama-cli.py ~/ollama-bench.sh ~/ollama-act.py \
       ~/ollama-commands.json ~/ollama-kit.md
 rm -rf ~/ollama-scripts ~/.ollama-rag ~/.ollama-sessions
-rm -f ~/.ollama-prompts.json ~/.ollama-bench-history.jsonl
+rm -f ~/.ollama-prompts.json ~/.ollama-bench-history.jsonl ~/.ollama-debug.log
 ```
 
 Después elimina el bloque `>>> ollama-cli personal >>>` de `~/.bashrc` y recarga la

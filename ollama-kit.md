@@ -17,6 +17,8 @@ orag ask "cómo funciona el modo act"      # preguntar sobre lo indexado
 orun "muestra la fecha"                   # enrutador: act / rag / chat
 owatch                                    # monitor en vivo
 odgpu "tu pregunta"                       # Gemma4 en la R7 260X (instancia aislada)
+ocode review programa.py                  # revisar código con JSON Schema
+odebug                                    # ver errores y trazas de la CLI
 ochat --session proyecto "hola"           # conversación persistente
 oprompt use resumen "texto a resumir"     # plantilla reutilizable
 ollama ps                                 # comprobar que dice 100% GPU
@@ -48,6 +50,8 @@ ollama-cli.py run "muestra la fecha"             # enrutador automático
 ollama-cli.py run --intent rag "qué dice el manual..."
 ollama-cli.py watch --count 5 --interval 1
 gemma4-dgpu.sh --bench                            # Gemma4 en dGPU, instancia temporal
+ollama-cli.py code review archivo.py --dry-run    # prompt y schema sin llamar al modelo
+ollama-cli.py debug --full                        # tracebacks de errores
 ollama-cli.py chat --session proyecto "hola"     # conversación persistente
 ollama-cli.py session list
 ollama-cli.py prompt add resumen --text 'Resume: {{args}}'
@@ -73,6 +77,8 @@ owatch                     # ollama-cli.py watch
 oprompt                    # ollama-cli.py prompt
 osess                      # ollama-cli.py session
 odgpu                      # gemma4-dgpu.sh (R7 260X aislada)
+ocode                      # ollama-cli.py code
+odebug                     # ollama-cli.py debug
 ```
 
 **Autocompletado con Tab** instalado en
@@ -500,7 +506,92 @@ son con `think:false`.
 
 ---
 
-## 9. Sesiones, prompts e historial de benchmarks
+## 9. Programar con el kit
+
+### Modelos por tarea
+
+| Tarea | Modelo | Por qué |
+|---|---|---|
+| Iterar rápido, explicar errores | `gemma3:q4` | 9,3 tok/s |
+| Revisar código, arquitectura, diffs | `nemotron3:gpu` | razona mejor |
+| Código extenso o respuesta larga | `odgpu` → `gemma4:dgpu` | 8,5 tok/s en dGPU aislada |
+| Buscar en tu propio código | `qwen:gpu` + `nemotron3:gpu` | embeddings + RAG |
+
+### `code`: revisar, testear, explicar y commitear
+
+`ocli code` (alias `ocode`) lee archivos o texto, trocea a 120 líneas por defecto
+para no desbordar los 2048 tokens y fuerza un JSON Schema por acción:
+
+```bash
+ocode review ~/ollama-cli.py --lines 80 --stats
+ocode review ~/ollama-cli.py --start 81 --lines 80   # siguiente trozo
+ocode tests modulo.py
+ocode explain "def suma(a, b): return a + b"
+echo 'def f(x): return x*2' | ocli code review --stdin
+ocode commit /home/onion/ollama-local-kit
+ocode review archivo.py --dry-run      # ver system, prompt y schema sin llamar al modelo
+```
+
+| Acción | Modelo | JSON devuelto |
+|---|---|---|
+| `review` | `nemotron3:gpu` | `problemas[]` (severidad, sugerencia) + `resumen` |
+| `tests` | `gemma3:q4` | `tests`, `casos[]`, `notas` |
+| `explain` | `gemma3:q4` | `explicacion`, `mejoras[]` |
+| `commit` | `nemotron3:gpu` | `tipo`, `alcance`, `mensaje`, `cuerpo` |
+
+Opciones útiles: `--from/--start` y `--lines` para trocear, `--stdin`, `-m` para
+cambiar el modelo, `--no-schema` para salida libre, `--dry-run` para inspeccionar,
+`--session`, `--stats` y `--max-tokens`. Si el prompt supera ~7000 caracteres,
+la CLI avisa de que puede desbordar el contexto.
+
+### RAG sobre tu código
+
+`rag index` acepta directorios, entiende `.py`, `.sh`, `.json`, `.md` y omite
+`.git`, `__pycache__` y `node_modules`:
+
+```bash
+orag index /home/onion/ollama-local-kit
+orag ask "¿dónde se guardan las sesiones de chat?" -k 4
+orag ask "cómo funciona el modo act" -m gemma3:q4 -k 3
+```
+
+### `act` ampliado y selftest
+
+El catálogo tiene 53 entradas. Las nuevas para programar son `py_compile`,
+`shell_check`, `json_check`, `run_tests`, `git_status`, `git_diff`, `git_log`,
+`kit_doctor`, `kit_bench`, `rag_reindex`, `debug_log` y `review_cli`.
+
+```bash
+oact "comprueba la sintaxis de los scripts" --dry-run
+oact "cambios pendientes en el repo"
+bash ~/ollama-scripts/selftest.sh     # 5 pasos, sin dependencias nuevas
+```
+
+`selftest.sh` valida sintaxis Python y bash, el JSON del catálogo, el índice RAG y
+`doctor`. No necesita pytest (no está instalado).
+
+### Indicadores y debug
+
+Cada proceso lanzado por `act` muestra `[->] comando`, su salida, la duración y
+`[OK]` o `[X] exit N`. Todo se registra en `~/.ollama-debug.log` (JSONL):
+peticiones API, errores HTTP, comandos ejecutados, timeouts y tracebacks.
+
+```bash
+odebug                      # últimos 15 eventos
+odebug -n 3 --full          # tracebacks completos
+odebug -n 50
+odebug --clear
+ocli --debug code review archivo.py          # trazas en stderr
+OLLAMA_KIT_DEBUG=1 ocli act "muestra la fecha"
+```
+
+Si una orden falla, verás `ERROR: ... | Detalle en ~/.ollama-debug.log`. Con
+`--debug` se muestra además el traceback en pantalla. El log se incluye en el
+backup y se excluye del repositorio.
+
+---
+
+## 10. Sesiones, prompts e historial de benchmarks
 
 ### Conversaciones persistentes
 
@@ -567,7 +658,7 @@ o los parámetros de un Modelfile.
 
 ---
 
-## 10. Otras recetas de API
+## 11. Otras recetas de API
 
 ```bash
 # Generar texto
@@ -585,7 +676,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 
 ---
 
-## 11. Benchmarks y decisiones ya probadas
+## 12. Benchmarks y decisiones ya probadas
 
 | Configuración | tok/s |
 |---|---:|
@@ -619,7 +710,7 @@ curl -s http://127.0.0.1:11434/api/embed \
 
 ---
 
-## 12. Importar otro GGUF (plantilla)
+## 13. Importar otro GGUF (plantilla)
 
 ```bash
 cat > /home/onion/Documentos/ModelsIA/Modelfile.NOMBRE <<'EOF'
@@ -639,7 +730,7 @@ como experimento documentado, no como modelo de uso diario.
 
 ---
 
-## 13. Solución de problemas
+## 14. Solución de problemas
 
 | Síntoma | Causa / solución |
 |---|---|
@@ -653,12 +744,15 @@ como experimento documentado, no como modelo de uso diario.
 | El enrutador `run` elige mal | Usar `orun --intent act\|rag\|chat ...` o revisar con `--dry-run` |
 | El chat con `--session` olvida cosas | El historial supera `num_ctx=2048`; usa `--new-session` o conversaciones más cortas |
 | Un prompt no sustituye `{{variable}}` | Pasar `--var clave=valor` o argumentos posicionales; la CLI avisa si quedan variables |
+| `code` se queja de contexto | Reduce `--lines`, usa `--start` para el siguiente trozo o indexa con `orag` |
+| Un comando de `act` termina con `[X] exit N` | Mira la salida `[stderr]` y ejecuta `odebug -n 3 --full` |
+| No sabes qué pasó antes del error | `odebug` muestra todas las peticiones y comandos con su marca de tiempo |
 | Peticiones lentas o coladas | `NUM_PARALLEL=1` y un modelo cargado: enviar de una en una |
 | Poco espacio en `/var` o `/home` | `sudo journalctl --vacuum-size=200M`; revisar `df -h` |
 
 ---
 
-## 14. Mantenimiento y reversión
+## 15. Mantenimiento y reversión
 
 ```bash
 watch -n 2 sensors                 # temperatura, consumo, ventilador

@@ -12,6 +12,7 @@ cp /home/onion/ollama-cli.py /home/onion/ollama-commands.json \
 cp /home/onion/.bashrc "$DEST/bashrc" 2>/dev/null || true
 cp /home/onion/.ollama-prompts.json "$DEST"/ 2>/dev/null || true
 cp /home/onion/.ollama-bench-history.jsonl "$DEST"/ 2>/dev/null || true
+cp /home/onion/.ollama-debug.log "$DEST"/ 2>/dev/null || true
 cp -r /home/onion/.ollama-sessions "$DEST"/sessions 2>/dev/null || true
 cp -r /home/onion/ollama-scripts "$DEST"/ 2>/dev/null || true
 mkdir -p "$DEST/bash-completion" 2>/dev/null || true

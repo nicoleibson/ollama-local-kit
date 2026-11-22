@@ -65,7 +65,7 @@ Los alias se instalan desde [`config/bashrc-ollama-block.txt`](config/bashrc-oll
 ```bash
 ocli doctor                                   # comprobar toda la configuración
 ochat "por qué el cielo es azul"              # chat rápido
-oact --list                                   # 41 entradas editables
+oact --list                                   # 53 entradas editables
 oact "cuánto espacio libre queda"             # elige df -> df -h
 oact --free --dry-run "procesos que más CPU usan"
 orag index /home/onion/ollama-kit.md
@@ -73,6 +73,9 @@ orag ask "cómo funciona el modo act" -k 3
 orun "muestra la fecha"                       # enrutador automático
 owatch --interval 1 --count 10                # monitor en vivo
 odgpu "explica la dispersión de Rayleigh"      # Gemma4 en dGPU aislada
+ocode review archivo.py --dry-run              # prompt y schema sin llamar al modelo
+ocode tests archivo.py                        # tests unitarios con JSON Schema
+odebug -n 5                                   # últimos errores y eventos
 ochat --session proyecto "hola"               # conversación persistente
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
@@ -83,7 +86,8 @@ Funciones principales de `ollama-cli.py`:
 | Comando | Qué hace |
 |---|---|
 | `chat` / `ask` | chat por streaming o interactivo, con `--session` persistente |
-| `act` | ejecuta acciones del catálogo o propone comandos con `--free` |
+| `act` | ejecuta acciones del catálogo (53 entradas) o propone comandos con `--free` |
+| `code` | `review`/`tests`/`explain`/`commit` con troceo y JSON Schema |
 | `rag` | indexa archivos y responde con fragmentos recuperados |
 | `run` / `do` | clasifica la intención y delega en `act`, `rag` o `chat` |
 | `prompt` | biblioteca de plantillas con variables (`{{args}}`, `{{1}}`, `{{clave}}`) |
@@ -91,8 +95,21 @@ Funciones principales de `ollama-cli.py`:
 | `bench` | mide tokens/s y guarda el historial (`--history`) |
 | `watch` | monitor de CPU, GPU, memoria, discos y sensores |
 | `status` / `doctor` | diagnóstico y verificación |
+| `debug` | errores, peticiones y tracebacks de la CLI (`~/.ollama-debug.log`) |
 | `embed` | embeddings directos con `qwen:gpu` |
 | `list` / `show` / `import` / `rm` / `stop` | gestión de modelos |
+
+## Programar y depurar
+
+`ocode review|tests|explain|commit` trocea archivos (120 líneas por defecto,
+`--start` para continuar) y fuerza JSON Schema según la acción. `--dry-run` muestra
+el prompt exacto sin consumir tokens. Para buscar en un repo, `orag index DIRECTORIO`
+y `orag ask "..."`; para ejecutar comprobaciones, `oact "run_tests"` o
+`bash ~/ollama-scripts/selftest.sh`.
+
+Los comandos de `act` muestran `[->]`, duración y `[OK]`/`[X] exit N`. Todo queda en
+`~/.ollama-debug.log`: `odebug` resume, `odebug --full` muestra tracebacks y
+`ocli --debug ...` añade trazas en directo. Ver manual, sección 9.
 
 ## Seguridad
 
@@ -112,7 +129,7 @@ Funciones principales de `ollama-cli.py`:
 README.md                      Esta guía
 INSTALL.md                     Instalación paso a paso
 CHANGELOG.md                   Historial de cambios
-ollama-kit.md                  Manual completo (13 secciones)
+ollama-kit.md                  Manual completo (15 secciones)
 ollama-cli.py                  CLI principal
 ollama-commands.json           Catálogo editable de acciones
 ollama-bench.sh                Benchmark independiente

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-22 (séptima tanda)
+
+- Nuevo subcomando `code` (alias `ocode`) con `review`, `tests`, `explain` y `commit`:
+  trocea archivos, elige modelo por acción y fuerza JSON Schema. Incluye `--dry-run`,
+  `--start/--lines`, `--stdin` y `--no-schema`.
+- Instrumentación: `~/.ollama-debug.log` registra peticiones API, errores HTTP,
+  comandos, timeouts y tracebacks. `debug` (alias `odebug`), `--debug` global y
+  `OLLAMA_KIT_DEBUG=1`. Toda acción de `act` muestra `[->]`, duración y `[OK]`/`[X]`.
+- Catálogo ampliado a 53 entradas (compile, shell/json check, run_tests, git,
+  doctor, bench, reindex, debug_log, review_cli) y nuevo `selftest.sh` de 5 pasos.
+- Alias `ocode`/`odebug`, autocompletado, backup del log, `.gitignore` y manual
+  (nueva sección 9) actualizados.
+
 ## 2026-11-22 (sexta tanda)
 
 - Prueba aislada de Gemma4 en la R7 260X: 42/43 capas en GPU, ~1,92 GiB de VRAM y

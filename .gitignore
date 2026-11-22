@@ -13,6 +13,7 @@ venv/
 .ollama-sessions/
 .ollama-prompts.json
 .ollama-bench-history.jsonl
+.ollama-debug.log
 
 # Copias de seguridad y configuraciones locales con posible información sensible
 Backups.Ollama/

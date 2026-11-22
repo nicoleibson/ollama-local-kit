@@ -9,10 +9,12 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import time
+import traceback
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -23,6 +25,8 @@ MODELS_DIR = Path("/home/onion/Documentos/ModelsIA")
 SESSIONS_DIR = Path.home() / ".ollama-sessions"
 PROMPTS_PATH = Path.home() / ".ollama-prompts.json"
 BENCH_HISTORY = Path.home() / ".ollama-bench-history.jsonl"
+DEBUG_LOG = Path.home() / ".ollama-debug.log"
+DEBUG = False
 
 INFO = {
     "gemma3:q4": ("Gemma 3 1B Q4_K_M", "9,3 tok/s", "chat rápido y acciones"),
@@ -83,19 +87,44 @@ def load_catalog(path=None):
     return DEFAULT_CATALOG
 
 
+def debug_log(event, **fields):
+    """Registro JSONL de eventos y errores. Los errores se guardan siempre."""
+    if not DEBUG and event not in ("error", "api_error", "process_error", "process_timeout"):
+        return
+    row = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "event": event}
+    row.update({k: str(v)[:6000] for k, v in fields.items()})
+    try:
+        DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with DEBUG_LOG.open("a") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    if DEBUG:
+        detail = " ".join(f"{k}={str(v)[:160]}" for k, v in fields.items())
+        print(f"[debug] {event} {detail}", file=sys.stderr)
+
+
 def api(path, payload=None, method=None, timeout=300):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(
         HOST + path, data=data, method=method,
         headers={"Content-Type": "application/json"},
     )
+    started = time.time()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
+            status = resp.status
     except urllib.error.HTTPError as e:
-        raise SystemExit(f"HTTP {e.code}: {e.read().decode()[:300]}")
+        body = e.read().decode(errors="replace")
+        debug_log("api_error", path=path, code=e.code, body=body[:800],
+                  seconds=round(time.time() - started, 3))
+        raise SystemExit(f"HTTP {e.code} en {path}: {body[:300]}")
     except urllib.error.URLError as e:
-        raise SystemExit(f"No se puede conectar con {HOST}: {e.reason}")
+        debug_log("api_error", path=path, reason=str(e.reason))
+        raise SystemExit(f"No se puede conectar con {HOST}{path}: {e.reason}")
+    debug_log("api", path=path, status=status, bytes=len(raw),
+              seconds=round(time.time() - started, 3))
     return json.loads(raw) if raw else {}
 
 
@@ -104,6 +133,7 @@ def api_stream(path, payload, timeout=300):
     req = urllib.request.Request(
         HOST + path, data=data, headers={"Content-Type": "application/json"}
     )
+    started = time.time()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             for line in resp:
@@ -114,9 +144,14 @@ def api_stream(path, payload, timeout=300):
                 if chunk.get("done"):
                     break
     except urllib.error.HTTPError as e:
-        raise SystemExit(f"HTTP {e.code}: {e.read().decode()[:300]}")
+        body = e.read().decode(errors="replace")
+        debug_log("api_error", path=path, code=e.code, body=body[:800])
+        raise SystemExit(f"HTTP {e.code} en {path}: {body[:300]}")
     except urllib.error.URLError as e:
-        raise SystemExit(f"No se puede conectar con {HOST}: {e.reason}")
+        debug_log("api_error", path=path, reason=str(e.reason))
+        raise SystemExit(f"No se puede conectar con {HOST}{path}: {e.reason}")
+    debug_log("api", path=path, status=200, stream=True,
+              seconds=round(time.time() - started, 3))
 
 
 def sh(cmd, timeout=20):
@@ -126,6 +161,36 @@ def sh(cmd, timeout=20):
         ).stdout.strip()
     except subprocess.TimeoutExpired:
         return ""
+
+
+def run_visible(cmd, shell=True, timeout=300):
+    """Ejecuta un proceso mostrando inicio, salida, duración y código de salida."""
+    started = time.time()
+    shown = cmd if isinstance(cmd, str) else " ".join(shlex.quote(c) for c in cmd)
+    print(f"[->] {shown}", flush=True)
+    try:
+        p = subprocess.run(cmd, shell=shell, capture_output=True, text=True,
+                           timeout=timeout)
+    except subprocess.TimeoutExpired:
+        elapsed = time.time() - started
+        debug_log("process_timeout", cmd=cmd, seconds=round(elapsed, 3), timeout=timeout)
+        print(f"[X] TIMEOUT tras {timeout}s", file=sys.stderr)
+        return 124
+    if p.stdout:
+        print(p.stdout, end="" if p.stdout.endswith("\n") else "\n")
+    if p.stderr:
+        print("[stderr] " + p.stderr.replace("\n", "\n[stderr] ").rstrip())
+    elapsed = time.time() - started
+    if p.returncode:
+        debug_log("process_error", cmd=cmd, code=p.returncode,
+                  seconds=round(elapsed, 3), stdout=p.stdout[-2000:],
+                  stderr=p.stderr[-2000:])
+        print(f"[X] exit {p.returncode} en {elapsed:.2f}s | detalle: {DEBUG_LOG}",
+              file=sys.stderr)
+    else:
+        debug_log("process_ok", cmd=cmd, seconds=round(elapsed, 3))
+        print(f"[OK] {elapsed:.2f}s")
+    return p.returncode
 
 
 def build_payload(args, prompt, history=None):
@@ -497,7 +562,9 @@ def cmd_act(args):
             if answer not in ("s", "si", "y", "yes"):
                 print("Cancelado.")
                 return
-        subprocess.run(command, shell=True, check=True)
+        rc = run_visible(command, timeout=300)
+        if rc:
+            raise SystemExit(f"El comando terminó con código {rc}")
         return
 
     if proposed not in catalog:
@@ -508,14 +575,16 @@ def cmd_act(args):
         if not script.is_file():
             raise SystemExit(f"El script no existe: {script}")
         target = str(script)
-        run_fn = lambda: subprocess.run(["bash", target], check=True)
+        run_fn = lambda: run_visible(["bash", target], shell=False)
     else:
         target = item["cmd"]
-        run_fn = lambda: subprocess.run(target, shell=True, check=True)
+        run_fn = lambda: run_visible(target)
     print(f"modelo: {model} | comando: {proposed} -> {target}  ({r['eval_count']} tokens)")
     if args.dry_run:
         return
-    run_fn()
+    rc = run_fn()
+    if rc:
+        raise SystemExit(f"El comando terminó con código {rc}")
 
 
 BENCH_PROMPT = "Explica por qué el cielo es azul"
@@ -815,6 +884,8 @@ def cmd_config(args):
     print("  oprompt-> ollama-cli.py prompt")
     print("  osess  -> ollama-cli.py session")
     print("  odgpu  -> ollama-scripts/gemma4-dgpu.sh (R7 260X aislada)")
+    print("  ocode  -> ollama-cli.py code")
+    print("  odebug -> ollama-cli.py debug")
 
 
 # ---------------------------------------------------------------------------
@@ -1256,9 +1327,16 @@ def build_parser():
   ollama-cli.py prompt add resumen --text 'Resume {{args}}'
   ollama-cli.py prompt use resumen "este texto largo"
   ollama-cli.py bench --history
+  ollama-cli.py code review ~/ollama-cli.py --dry-run
+  ollama-cli.py code tests modulo.py
+  ollama-cli.py code commit
+  ollama-cli.py --debug act "muestra la fecha"
+  ollama-cli.py debug --full
   ollama-cli.py import gemma3:q2 /home/onion/Documentos/ModelsIA/Gemma-...-Q2_k.gguf
 """,
     )
+    p.add_argument("--debug", action="store_true",
+                   help="trazas y peticiones en stderr; también OLLAMA_KIT_DEBUG=1")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("chat", aliases=["ask"], help="chatear (sin prompt = interactivo)")
@@ -1298,6 +1376,24 @@ def build_parser():
     pr.add_argument("--no-stream", action="store_true")
     pr.add_argument("--stats", action="store_true")
     pr.set_defaults(func=cmd_prompt)
+
+    cd = sub.add_parser("code", help="review/tests/explain/commit con modelos locales")
+    cd.add_argument("action", choices=list(CODE_ACTIONS))
+    cd.add_argument("paths", nargs="*", help="archivos, texto o ruta del repo en commit")
+    cd.add_argument("-m", "--model")
+    cd.add_argument("--system")
+    cd.add_argument("--from", "--start", dest="start", type=int, default=1,
+                    help="primera línea a leer (default 1)")
+    cd.add_argument("--lines", type=int, default=120, help="líneas por archivo o diff")
+    cd.add_argument("--stdin", action="store_true", help="leer el código de stdin")
+    cd.add_argument("--ctx", type=int, default=2048)
+    cd.add_argument("--max-tokens", type=int)
+    cd.add_argument("--no-schema", action="store_true", help="salida libre sin JSON")
+    cd.add_argument("--dry-run", action="store_true", help="mostrar el prompt sin llamar al modelo")
+    cd.add_argument("--no-stream", action="store_true")
+    cd.add_argument("--stats", action="store_true")
+    cd.add_argument("--session")
+    cd.set_defaults(func=cmd_code)
 
     a = sub.add_parser("act", help="ejecutar acción en lenguaje natural")
     a.add_argument("text", nargs="*")
@@ -1346,6 +1442,12 @@ def build_parser():
 
     d = sub.add_parser("doctor", help="comprobar toda la configuración")
     d.set_defaults(func=cmd_doctor)
+
+    dbg = sub.add_parser("debug", help="ver el registro de errores y eventos")
+    dbg.add_argument("-n", "--lines", type=int, default=15)
+    dbg.add_argument("--full", action="store_true", help="mostrar tracebacks completos")
+    dbg.add_argument("--clear", action="store_true", help="borrar el registro")
+    dbg.set_defaults(func=cmd_debug)
 
     l = sub.add_parser("list", help="modelos instalados y su uso recomendado")
     l.set_defaults(func=cmd_list)
@@ -1417,10 +1519,221 @@ def build_parser():
     return p
 
 
+CODE_ACTIONS = {
+    "review": {
+        "model": "nemotron3:gpu",
+        "max_tokens": 640,
+        "system": (
+            "Eres un revisor de código experimentado. Sé concreto y breve. "
+            "No inventes líneas ni archivos que no aparezcan en el código mostrado."
+        ),
+        "template": (
+            "Revisa el código siguiente. Busca bugs, vulnerabilidades, problemas de "
+            "concurrencia y código muerto. Devuelve solo los hallazgos relevantes con "
+            "una sugerencia de corrección.\n\nCÓDIGO:\n{code}"
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "problemas": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "archivo": {"type": "string"},
+                        "linea": {"type": "string"},
+                        "severidad": {"type": "string",
+                                      "enum": ["alta", "media", "baja"]},
+                        "sugerencia": {"type": "string"},
+                    },
+                    "required": ["severidad", "sugerencia"],
+                }},
+                "resumen": {"type": "string"},
+            },
+            "required": ["problemas", "resumen"],
+        },
+    },
+    "tests": {
+        "model": "gemma3:q4",
+        "max_tokens": 640,
+        "system": "Escribes tests unitarios claros y minimalistas en pytest.",
+        "template": (
+            "Escribe tests unitarios en pytest para el código siguiente. Usa "
+            "monkeypatch/mock si hay dependencias externas. Incluye casos límite.\n\n"
+            "CÓDIGO:\n{code}"
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "tests": {"type": "string"},
+                "casos": {"type": "array", "items": {"type": "string"}},
+                "notas": {"type": "string"},
+            },
+            "required": ["tests"],
+        },
+    },
+    "explain": {
+        "model": "gemma3:q4",
+        "max_tokens": 512,
+        "system": "Explicas código con palabras sencillas y sin rodeos.",
+        "template": (
+            "Explica qué hace el código siguiente, para qué sirve y en qué orden "
+            "se ejecuta. Después propón 3 mejoras concretas.\n\nCÓDIGO:\n{code}"
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "explicacion": {"type": "string"},
+                "mejoras": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["explicacion", "mejoras"],
+        },
+    },
+    "commit": {
+        "model": "nemotron3:gpu",
+        "max_tokens": 256,
+        "system": "Redactas mensajes de commit en formato Conventional Commits.",
+        "template": (
+            "Redacta UN mensaje de commit para este diff. Usa tipo, alcance opcional, "
+            "un imperativo corto en español y un cuerpo solo si aporta contexto.\n\n"
+            "DIFF:\n{code}"
+        ),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "tipo": {"type": "string",
+                         "enum": ["feat", "fix", "docs", "refactor", "test",
+                                  "chore", "perf"]},
+                "alcance": {"type": "string"},
+                "mensaje": {"type": "string"},
+                "cuerpo": {"type": "string"},
+            },
+            "required": ["tipo", "mensaje"],
+        },
+    },
+}
+
+
+def cmd_code(args):
+    info = CODE_ACTIONS[args.action]
+    chunks = []
+
+    if args.action == "commit":
+        repo = args.paths[0] if args.paths else "/home/onion/ollama-local-kit"
+        target = shlex.quote(str(Path(repo).expanduser()))
+        diff = sh(f"git -C {target} diff --unified=1", timeout=30)
+        stat = sh(f"git -C {target} diff --stat", timeout=30)
+        if not diff.strip():
+            raise SystemExit(f"No hay cambios sin confirmar en {repo}")
+        selected = diff.splitlines()[:args.lines]
+        text = "git diff --stat:\n" + stat + "\n\ngit diff:\n" + "\n".join(selected)
+        chunks.append((f"git diff de {repo}", text))
+    else:
+        if args.stdin:
+            chunks.append(("stdin", sys.stdin.read()))
+        literal = []
+        for raw in args.paths:
+            p = Path(raw).expanduser()
+            if not p.is_file():
+                literal.append(raw)
+                continue
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+            start = max(args.start - 1, 0)
+            selected = lines[start:start + args.lines]
+            end = start + len(selected)
+            label = f"{p} (líneas {start + 1}-{end} de {len(lines)})"
+            if end < len(lines):
+                label += f" — {len(lines) - end} líneas fuera; usa --start/--lines u orag"
+            chunks.append((label, "\n".join(selected)))
+        if literal:
+            chunks.append(("texto", " ".join(literal)))
+        if not chunks:
+            raise SystemExit(
+                "Indica un archivo, texto entre comillas o --stdin. "
+                "Ej: ocli code review ~/ollama-cli.py"
+            )
+
+    code = "\n\n".join(f"--- {label} ---\n{text}" for label, text in chunks)
+    prompt = info["template"].format(code=code)
+    nlines = sum(text.count("\n") + 1 for _, text in chunks)
+    model = args.model or info["model"]
+    print(f"[code] {args.action} | {len(chunks)} bloque(s) | {nlines} líneas | "
+          f"{len(code)} caracteres | modelo {model}")
+    if len(code) > 7000:
+        print(f"Aviso: ~{len(code) // 4} tokens de código; el contexto es "
+              f"{args.ctx}. Reduce --lines o usa orag index.", file=sys.stderr)
+
+    if args.dry_run:
+        print("\n--- SYSTEM ---\n" + (args.system or info["system"]))
+        print("\n--- PROMPT ---\n" + prompt)
+        print("\n--- FORMAT ---\n" + json.dumps(
+            None if args.no_schema else info["schema"], ensure_ascii=False, indent=2))
+        return
+
+    ns = argparse.Namespace(
+        prompt=[prompt],
+        model=model,
+        system=args.system or info["system"],
+        temperature=0.2,
+        ctx=args.ctx,
+        max_tokens=args.max_tokens or info["max_tokens"],
+        think=False,
+        no_stream=args.no_stream,
+        stats=args.stats,
+        format=None if args.no_schema else json.dumps(info["schema"]),
+        session=args.session,
+        new_session=False,
+    )
+    cmd_chat(ns)
+
+
+def cmd_debug(args):
+    if args.clear:
+        if DEBUG_LOG.exists():
+            DEBUG_LOG.unlink()
+            print(f"Borrado: {DEBUG_LOG}")
+        else:
+            print("No había log de debug.")
+        return
+    if not DEBUG_LOG.exists():
+        print(f"Sin eventos en {DEBUG_LOG}")
+        return
+    rows = []
+    for line in DEBUG_LOG.read_text().splitlines():
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    rows = rows[-args.lines:]
+    if args.full:
+        for row in rows:
+            print(json.dumps(row, ensure_ascii=False, indent=2))
+        return
+    print(f"{'HORA':<20} {'EVENTO':<16} DETALLE")
+    print("-" * 78)
+    for row in rows:
+        detail = " ".join(f"{k}={v}" for k, v in row.items()
+                          if k not in ("time", "event"))
+        print(f"{row.get('time', ''):<20} {row.get('event', ''):<16} {detail[:150]}")
+    print(f"\n{len(rows)} evento(s) de {DEBUG_LOG} | --full para ver tracebacks")
+
+
 def main():
+    global DEBUG
     parser = build_parser()
     args = parser.parse_args()
-    args.func(args)
+    DEBUG = getattr(args, "debug", False) or bool(os.environ.get("OLLAMA_KIT_DEBUG"))
+    try:
+        args.func(args)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        tb = traceback.format_exc()
+        debug_log("error", command=getattr(args, "cmd", "?"),
+                  error=str(exc), traceback=tb)
+        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"Detalle en {DEBUG_LOG} (ocli debug --full)", file=sys.stderr)
+        if DEBUG:
+            print(tb, file=sys.stderr)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
