@@ -5,6 +5,7 @@ Todo hereda la configuración ya aplicada: iGPU Carrizo, contexto 2048,
 un modelo cargado, KV q8_0, sin nube. Uso: ollama-cli.py --help
 """
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -92,6 +93,8 @@ LOCAL_DEFAULT_MODELS = {
     "ask": "gemma3:q4",
     "agent": "nemotron3:gpu",
     "rag": "nemotron3:gpu",
+    "flow": "gemma3:q4",
+    "oflow": "gemma3:q4",
 }
 
 
@@ -238,6 +241,7 @@ RAG_SKIP_DIRS = {
     ".git", "__pycache__", ".cache", "node_modules", ".ollama-rag",
     "Backups.Ollama",
 }
+FLOW_DIR = Path(os.environ.get("OLLAMA_FLOW_DIR", str(Path.home() / ".ollama-flow")))
 RAG_STOP = {
     "de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas",
     "y", "o", "en", "por", "para", "con", "sin", "qué", "que", "cómo",
@@ -1156,6 +1160,7 @@ def cmd_config(args):
     print("  ogemini -> ollama-cli.py contra Gemini (lee ~/.gemini-api-key)")
     print("  oagent  -> ollama-cli.py agent (REPL con herramientas)")
     print("  ofree   -> solo modelos locales, sin keys ni créditos")
+    print("  oflow   -> ollama-cli.py flow (contexto corto, estado en disco)")
     if EXTERNAL:
         print(f"\nNota: {PROVIDER} habla con la API remota; no toca el override local.")
         if NO_SCHEMA:
@@ -1968,6 +1973,425 @@ def cmd_agent(args):
             session_save(session, args.model, history)
 
 
+# ---------------------------------------------------------------------------
+# oflow: flujos para contextos cortos. El modelo no recuerda nada; el estado
+# vive en archivos bajo ~/.ollama-flow para poder reanudar y auditar.
+# ---------------------------------------------------------------------------
+
+def flow_job_dir(out, fallback):
+    """Directorio de trabajo del job; '--out' relativo cuelga de FLOW_DIR."""
+    if out:
+        p = Path(out).expanduser()
+        return p.resolve() if p.is_absolute() else (FLOW_DIR / p).resolve()
+    stem = Path(fallback).stem
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", stem).strip("-")[:60] or "flujo"
+    return (FLOW_DIR / safe).resolve()
+
+
+def flow_split(text, size=700, overlap=100):
+    """Agrupa párrafos enteros; los párrafos largos se dividen por frase."""
+    text = text.replace("\r\n", "\n")
+    chunks = []
+    buf = ""
+    for block in re.split(r"\n\s*\n+", text):
+        block = block.strip()
+        if not block:
+            continue
+        if len(block) > size:
+            if buf:
+                chunks.append(buf)
+                buf = ""
+            for _, piece in rag_split(block, size, overlap):
+                chunks.append(piece)
+            continue
+        if buf and len(buf) + 2 + len(block) > size:
+            chunks.append(buf)
+            buf = block
+        else:
+            buf = f"{buf}\n\n{block}" if buf else block
+    if buf:
+        chunks.append(buf)
+    return [c.strip() for c in chunks if c.strip()]
+
+
+def flow_collect(paths, chunk_chars=700, overlap=100):
+    files = rag_collect(paths, max_files=120, max_mb=20)
+    if not files:
+        raise SystemExit("No hay archivos de texto legibles en esas rutas.")
+    chunks = []
+    for f in files:
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "\x00" in text:
+            continue
+        pieces = flow_split(text, chunk_chars, overlap)
+        for index, piece in enumerate(pieces, 1):
+            key = f"{f}:{index}:{piece}".encode("utf-8")
+            chunks.append({
+                "id": hashlib.sha1(key).hexdigest()[:12],
+                "path": str(f),
+                "index": index,
+                "text": piece,
+            })
+    if not chunks:
+        raise SystemExit("No se generaron fragmentos con esos parámetros.")
+    return chunks
+
+
+def flow_chat(system, user, args, schema=None, max_tokens=None):
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": user})
+    payload = {
+        "model": args.model,
+        "stream": False,
+        "think": False,
+        "messages": messages,
+        "options": {
+            "temperature": args.temperature,
+            "num_ctx": args.ctx,
+            "num_predict": max_tokens or args.max_tokens,
+        },
+    }
+    if schema:
+        payload["format"] = schema
+    r = api("/api/chat", payload, timeout=300)
+    if r.get("error"):
+        raise SystemExit("ERROR: " + str(r["error"]))
+    return r.get("message", {}).get("content", "").strip()
+
+
+def flow_parse_json(text, fallback):
+    clean = text.strip()
+    if clean.startswith("```"):
+        clean = re.sub(r"^```[^\n]*\n?", "", clean)
+        clean = re.sub(r"```$", "", clean).strip()
+    try:
+        data = json.loads(clean)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", clean, re.S)
+        if not match:
+            return fallback
+        try:
+            data = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return fallback
+    return data if isinstance(data, dict) else fallback
+
+
+def flow_prepare(args, mode, extra=None):
+    signature = {
+        "mode": mode,
+        "sources": [str(Path(p).expanduser().resolve()) for p in args.paths],
+        "chunk_chars": args.chunk_chars,
+        "overlap": args.overlap,
+        "prompt": getattr(args, "prompt", ""),
+        "labels": getattr(args, "labels", []),
+        "model": args.model,
+    }
+    signature.update(extra or {})
+    job = flow_job_dir(getattr(args, "out", None), signature["sources"][0])
+    state_path = job / "state.json"
+    results_path = job / "results.jsonl"
+
+    if getattr(args, "restart", False):
+        for name in ("state.json", "results.jsonl", "carry.txt", "report.md"):
+            target = job / name
+            if target.exists():
+                target.unlink()
+
+    done = set()
+    if state_path.exists():
+        try:
+            state = json.loads(state_path.read_text())
+        except json.JSONDecodeError:
+            raise SystemExit(f"Estado corrupto: {state_path}. Usa --restart.")
+        if state.get("signature") != signature:
+            raise SystemExit(
+                f"El trabajo {job} tiene otra configuración. Usa --restart "
+                "para empezar de cero o cambia --out."
+            )
+        if results_path.exists():
+            for line in results_path.read_text().splitlines():
+                try:
+                    done.add(json.loads(line)["id"])
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    else:
+        job.mkdir(parents=True, exist_ok=True)
+        state = {
+            "mode": mode,
+            "signature": signature,
+            "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+
+    chunks = flow_collect(signature["sources"], args.chunk_chars, args.overlap)
+    if done and done <= {c["id"] for c in chunks}:
+        print(f"Reanudando {job}: {len(done)} fragmentos ya procesados.")
+    return job, chunks, done
+
+
+def flow_append(job, row):
+    with (job / "results.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def flow_rows(job):
+    path = job / "results.jsonl"
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text().splitlines():
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
+def flow_report_simple(job, mode):
+    rows = flow_rows(job)
+    lines = [f"# Informe {mode}", ""]
+    for row in rows:
+        lines.append(f"## [{row['index']}] {row['path']}")
+        lines.append(str(row.get("output", "")))
+        lines.append("")
+    (job / "report.md").write_text("\n".join(lines), encoding="utf-8")
+    return job / "report.md"
+
+
+def flow_report_classify(job, labels):
+    rows = flow_rows(job)
+    by_label = {label: [] for label in labels}
+    raw = []
+    for row in rows:
+        output = row.get("output") or {}
+        if isinstance(output, dict) and "raw" in output:
+            raw.append(row)
+            continue
+        matches = output.get("matches") if isinstance(output, dict) else None
+        if not isinstance(matches, list):
+            raw.append(row)
+            continue
+        for match in matches:
+            if not isinstance(match, dict):
+                continue
+            label = match.get("label")
+            if label in by_label:
+                evidence = str(match.get("evidence", "")).strip()
+                by_label[label].append(f"[{row['index']}] {row['path']}: {evidence}")
+
+    lines = ["# Informe classify", ""]
+    for label in labels:
+        lines.append(f"## {label} ({len(by_label[label])})")
+        lines.extend(by_label[label] or ["(sin coincidencias)"])
+        lines.append("")
+    if raw:
+        lines.append("## Fragmentos sin JSON válido")
+        lines.extend(f"[{r['index']}] {r['path']}" for r in raw)
+        lines.append("")
+    (job / "report.md").write_text("\n".join(lines), encoding="utf-8")
+    return job / "report.md"
+
+
+def flow_check_local():
+    if EXTERNAL:
+        raise SystemExit(
+            "oflow usa JSON Schema y estado local: ejecútalo con 'ofree flow' "
+            "u 'ocli flow'. Los proveedores remotos no admiten este flujo."
+        )
+
+
+def cmd_flow_map(args):
+    job, chunks, done = flow_prepare(args, "map", {"prompt": args.prompt})
+    system = (
+        "Trabajas con fragmentos aislados de un documento. Ejecuta SOLO la tarea "
+        "indicada usando el fragmento dado. No inventes datos que no aparezcan en "
+        "él y responde de forma breve, sin markdown."
+    )
+    processed = 0
+    for chunk in chunks:
+        if chunk["id"] in done:
+            continue
+        if args.limit and processed >= args.limit:
+            break
+        user = f"TAREA: {args.prompt}\n\nFRAGMENTO:\n{chunk['text']}"
+        output = flow_chat(system, user, args)
+        flow_append(job, {
+            "id": chunk["id"], "index": chunk["index"], "path": chunk["path"],
+            "output": output,
+        })
+        done.add(chunk["id"])
+        processed += 1
+        print(f"  {len(done)}/{len(chunks)} {chunk['path']} #{chunk['index']}",
+              flush=True)
+    report = flow_report_simple(job, "map")
+    print(f"Fragmentos: {len(chunks)} | procesados ahora: {processed}")
+    print(f"Resultados: {job / 'results.jsonl'}")
+    print(f"Informe: {report}")
+
+
+def cmd_flow_slide(args):
+    job, chunks, done = flow_prepare(args, "slide", {"carry": args.carry})
+    carry_path = job / "carry.txt"
+    carry = carry_path.read_text(encoding="utf-8") if carry_path.exists() else ""
+    system = (
+        "Mantén un resumen acumulativo muy breve. Recibes un resumen parcial y un "
+        "fragmento nuevo. Actualiza el resumen con lo importante del fragmento, "
+        "sin repetir bloques ni inventar datos. Responde SOLO con el resumen."
+    )
+    processed = 0
+    for chunk in chunks:
+        if chunk["id"] in done:
+            continue
+        if args.limit and processed >= args.limit:
+            break
+        user = (
+            f"RESUMEN PARCIAL (puede estar incompleto):\n{carry or '(vacío)'}\n\n"
+            f"FRAGMENTO ACTUAL:\n{chunk['text']}\n\n"
+            f"TAREA: {args.prompt}"
+        )
+        output = flow_chat(system, user, args)
+        carry = (carry + "\n" + output).strip()[-args.carry:]
+        carry_path.write_text(carry, encoding="utf-8")
+        flow_append(job, {
+            "id": chunk["id"], "index": chunk["index"], "path": chunk["path"],
+            "output": output, "carry": carry,
+        })
+        done.add(chunk["id"])
+        processed += 1
+        print(f"  {len(done)}/{len(chunks)} {chunk['path']} #{chunk['index']}",
+              flush=True)
+    report = flow_report_simple(job, "slide")
+    print(f"Fragmentos: {len(chunks)} | procesados ahora: {processed}")
+    print(f"Carry: {carry_path} ({len(carry)} chars)")
+    print(f"Resultados: {job / 'results.jsonl'}")
+    print(f"Informe: {report}")
+
+
+def cmd_flow_classify(args):
+    labels = [x.strip() for item in args.labels for x in item.split(",") if x.strip()]
+    if not labels:
+        raise SystemExit("Faltan etiquetas: usa --labels etiqueta1,etiqueta2")
+    job, chunks, done = flow_prepare(args, "classify", {"labels": labels})
+    schema = {
+        "type": "object",
+        "properties": {
+            "matches": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "label": {"type": "string", "enum": labels},
+                        "evidence": {"type": "string"},
+                    },
+                    "required": ["label"],
+                },
+            }
+        },
+        "required": ["matches"],
+    }
+    system = (
+        "Eres un clasificador de texto. Etiquetas permitidas: "
+        + ", ".join(labels)
+        + ". Devuelve SOLO un JSON con 'matches': una lista de objetos con "
+          "'label' y una 'evidence' breve extraída del fragmento. "
+          "Si no hay coincidencias, devuelve {\"matches\":[]}."
+    )
+    processed = 0
+    for chunk in chunks:
+        if chunk["id"] in done:
+            continue
+        if args.limit and processed >= args.limit:
+            break
+        raw = flow_chat(system, f"FRAGMENTO:\n{chunk['text']}", args, schema=schema)
+        output = flow_parse_json(raw, {"matches": [], "raw": raw})
+        flow_append(job, {
+            "id": chunk["id"], "index": chunk["index"], "path": chunk["path"],
+            "output": output,
+        })
+        done.add(chunk["id"])
+        processed += 1
+        print(f"  {len(done)}/{len(chunks)} {chunk['path']} #{chunk['index']}",
+              flush=True)
+    report = flow_report_classify(job, labels)
+    print(f"Fragmentos: {len(chunks)} | procesados ahora: {processed}")
+    print(f"Resultados: {job / 'results.jsonl'}")
+    print(f"Informe: {report}")
+
+
+def cmd_flow_ask(args):
+    question = " ".join(args.question).strip()
+    if not question:
+        raise SystemExit("Escribe una pregunta después de 'flow ask'.")
+    chunks = flow_collect([args.path], args.chunk_chars, args.overlap)
+    print(f"Indexando {len(chunks)} fragmentos con {args.embed_model} ...")
+    vectors = []
+    for i in range(0, len(chunks), 32):
+        vectors.extend(rag_embed([c["text"] for c in chunks[i:i + 32]],
+                                 args.embed_model))
+    qvec = rag_embed([question], args.embed_model)[0]
+    searchable = [{"text": c["text"], "path": c["path"]} for c in chunks]
+    idf = rag_idf(searchable)
+    scored = []
+    for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
+        score = (rag_cosine(qvec, vector)
+                 + 0.5 * rag_lexical(question, searchable[i], idf))
+        scored.append((score, chunk))
+    scored.sort(key=lambda item: item[0], reverse=True)
+
+    picked = []
+    for score, chunk in scored:
+        if any(p["path"] == chunk["path"]
+               and abs(p["index"] - chunk["index"]) <= 1 for _, p in picked):
+            continue
+        picked.append((score, chunk))
+        if len(picked) >= args.k:
+            break
+    if not picked:
+        raise SystemExit("No se encontraron fragmentos relevantes.")
+
+    sections = []
+    used = 0
+    for i, (_, chunk) in enumerate(picked, 1):
+        block = f"[{i}] {chunk['path']}\n{chunk['text']}"
+        if used + len(block) > args.context_chars and sections:
+            break
+        sections.append(block)
+        used += len(block) + 4
+    picked = picked[:len(sections)]
+    context = "\n\n".join(sections)
+    system = (
+        "Responde a la pregunta usando SOLO los fragmentos recuperados. Parafrasea "
+        "en lugar de copiar y cita con [1], [2], etc. Di 'No lo encuentro en el "
+        "documento' solo si los fragmentos no guardan relación con la pregunta."
+    )
+    user = f"Pregunta: {question}\n\nFragmentos:\n{context}"
+    answer = flow_chat(system, user, args, max_tokens=args.max_tokens)
+    print(answer)
+    print("\nFuentes:")
+    for i, (score, chunk) in enumerate(picked, 1):
+        print(f"  [{i}] {score:.3f}  {chunk['path']}  (fragmento {chunk['index']})")
+
+
+def cmd_flow(args):
+    flow_check_local()
+    mode = getattr(args, "flow_cmd", None)
+    if mode == "map":
+        return cmd_flow_map(args)
+    if mode == "slide":
+        return cmd_flow_slide(args)
+    if mode == "classify":
+        return cmd_flow_classify(args)
+    if mode == "ask":
+        return cmd_flow_ask(args)
+    raise SystemExit("Usa uno de: oflow map|slide|classify|ask")
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="ollama-cli.py",
@@ -1999,6 +2423,10 @@ def build_parser():
   ollama-cli.py code commit
   ollama-cli.py agent                          # REPL con herramientas y permisos
   ollama-cli.py agent --root ~/ollama-local-kit --session trabajo
+  ollama-cli.py flow map informe.md --prompt "Resume en 3 viñetas" --out informe
+  ollama-cli.py flow slide novela.txt --prompt "Continúa el resumen" --carry 300
+  ollama-cli.py flow classify contrato.md --labels rescision,confidencialidad
+  ollama-cli.py flow ask --path contrato.md "¿hay cláusula de rescisión?" -k 3
   ollama-cli.py --debug act "muestra la fecha"
   ollama-cli.py debug --full
   ollama-cli.py import gemma3:q2 /home/onion/Documentos/ModelsIA/Gemma-...-Q2_k.gguf
@@ -2206,6 +2634,62 @@ def build_parser():
     rc = rs.add_parser("clear", help="borrar el índice")
     rc.add_argument("--yes", action="store_true")
     rc.set_defaults(func=cmd_rag_clear)
+
+    fl = sub.add_parser("flow", aliases=["oflow"],
+                        help="flujos de contexto corto: map/slide/ask/classify")
+    fs = fl.add_subparsers(dest="flow_cmd", required=True)
+
+    def flow_common(sp):
+        sp.add_argument("-m", "--model", default=None,
+                        help="modelo local (default: gemma3:q4)")
+        sp.add_argument("--chunk-chars", type=int, default=700)
+        sp.add_argument("--overlap", type=int, default=100)
+        sp.add_argument("--ctx", type=int, default=2048)
+        sp.add_argument("--max-tokens", type=int, default=256)
+        sp.add_argument("-t", "--temperature", type=float, default=0.0)
+        sp.add_argument("--out", help="directorio de trabajo "
+                        "(default: ~/.ollama-flow/<nombre>)")
+        sp.add_argument("--restart", action="store_true",
+                        help="borrar estado anterior y empezar de cero")
+
+    fm = fs.add_parser("map", help="resumir o extraer de cada fragmento")
+    flow_common(fm)
+    fm.add_argument("paths", nargs="+")
+    fm.add_argument("--prompt", required=True,
+                    help="tarea a aplicar a cada fragmento")
+    fm.add_argument("--limit", type=int, default=0,
+                    help="procesar como máximo N fragmentos (0 = todos)")
+    fm.set_defaults(func=cmd_flow)
+
+    fsl = fs.add_parser("slide", help="ventana deslizante con memoria externa")
+    flow_common(fsl)
+    fsl.add_argument("paths", nargs="+")
+    fsl.add_argument("--prompt",
+                     default="Continúa el resumen anterior con el fragmento actual.")
+    fsl.add_argument("--carry", type=int, default=300,
+                     help="caracteres máximos del resumen parcial")
+    fsl.add_argument("--limit", type=int, default=0)
+    fsl.set_defaults(func=cmd_flow)
+
+    fc = fs.add_parser("classify", help="clasificar fragmentos con JSON Schema")
+    flow_common(fc)
+    fc.add_argument("paths", nargs="+")
+    fc.add_argument("--labels", nargs="+", required=True,
+                    help="etiquetas (separadas por coma o espacio)")
+    fc.add_argument("--limit", type=int, default=0)
+    fc.set_defaults(func=cmd_flow)
+
+    fa = fs.add_parser("ask", help="RAG efímero por documento, sin índice global")
+    flow_common(fa)
+    fa.add_argument("--path", required=True,
+                    help="archivo o directorio a indexar temporalmente")
+    fa.add_argument("question", nargs="+")
+    fa.add_argument("--embed-model", default="qwen:gpu")
+    fa.add_argument("-k", type=int, default=3,
+                    help="número de fragmentos a inyectar")
+    fa.add_argument("--context-chars", type=int, default=3600,
+                    help="máximo de caracteres de contexto para el modelo")
+    fa.set_defaults(func=cmd_flow)
 
     cf = sub.add_parser("config", help="configuración efectiva y atajos")
     cf.set_defaults(func=cmd_config)

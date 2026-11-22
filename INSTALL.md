@@ -206,6 +206,9 @@ odebug -n 5
 ocli config                                   # debe decir MODO: LOCAL
 oagent --help                                 # debe mostrar el REPL de agente
 ofree config                                  # debe decir GRATIS: solo modelos locales
+oflow --help                                  # debe mostrar map/slide/classify/ask
+ofree flow map /home/onion/ollama-kit.md --prompt 'Resume' --out prueba --limit 1
+cat ~/.ollama-flow/prueba/report.md           # estado en disco, reanudable
 OLLAMA_KIT_PROVIDER=nvidia ollama-cli.py config | grep 'Modelo por defecto'  # opcional
 # oagent --root /tmp                          # prueba en carpeta desechable
 ```

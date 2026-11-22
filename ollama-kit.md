@@ -421,6 +421,9 @@ crece al ampliar este documento). Preguntas reales:
 Volver a indexar la misma ruta reemplaza solo los fragmentos de esa ruta; el resto
 del índice se conserva. `rag clear` borra todo.
 
+Este índice es global: si trabajas con varios proyectos, conviene usar `oflow`
+(sección 12), que mantiene una búsqueda efímera por documento y no lo sobrescribe.
+
 ---
 
 ## 7. Enrutador `run` y monitor `watch`
@@ -879,7 +882,75 @@ Detalles operativos:
 
 ---
 
-## 12. Benchmarks y decisiones ya probadas
+## 12. `oflow`: flujos con modelos de contexto corto
+
+Tu hardware no puede pasarle un libro entero a `gemma3:q4` (2048 tokens de
+contexto). `oflow` invierte la responsabilidad: **el modelo no recuerda nada; la
+herramienta guarda el estado en disco**. Cada llamada recibe un fragmento y, como
+mucho, un resumen parcial; nunca el documento completo. Es local por diseño: los
+proveedores externos se rechazan porque estos modos dependen de JSON Schema y de
+archivos en este equipo.
+
+### Los cuatro modos
+
+| Modo | Arquitectura | Cuándo usarlo |
+|---|---|---|
+| `map` | Dividir y conquistar | resumir o extraer lo mismo de cada fragmento |
+| `slide` | Ventana deslizante | traducir o resumir con coherencia entre párrafos |
+| `ask` | RAG efímero por documento | preguntar un dato concreto sin índice global |
+| `classify` | Micro-clasificación + informe | etiquetar cláusulas, detectar patrones |
+
+```bash
+oflow map informe.md --prompt "Resume en 3 viñetas" --out informe
+oflow map libro.txt --prompt "Extrae nombres propios" --chunk-chars 700 --limit 20
+oflow slide novela.txt --prompt "Continúa el resumen" --carry 300 --out novela
+oflow classify contrato.md --labels rescision,confidencialidad --out contrato
+oflow ask --path contrato.md "¿hay cláusula de rescisión?" -k 3
+```
+
+`--out` relativo cuelga de `~/.ollama-flow/` (configurable con `OLLAMA_FLOW_DIR`).
+Si no se da, se deriva del nombre del archivo. Estado por trabajo:
+
+```
+~/.ollama-flow/<trabajo>/
+├── state.json       # firma de la configuración; detecta cambios
+├── results.jsonl    # una fila por fragmento ya procesado
+├── carry.txt        # memoria externa de slide (recortada a --carry)
+└── report.md        # informe final agrupado
+```
+
+Si se interrumpe, vuelve a ejecutar **el mismo comando**: salta los fragmentos
+cuyo ID ya está en `results.jsonl`. Si cambias el prompt, el modelo o el tamaño de
+fragmento, la firma no coincide y pide `--restart` (o usa otro `--out`).
+`--limit N` procesa N fragmentos por ejecución y también es reanudable.
+
+### Detalles de cada modo
+
+- **`map`**: fragmenta por párrafos completos (los párrafos largos se dividen por
+  frase) y aplica `--prompt` a cada uno. No se pasa ningún resultado anterior:
+  cada respuesta es independiente.
+- **`slide`**: antepone el resumen parcial de `carry.txt` al fragmento actual y
+  vuelve a recortar el resultado a `--carry` caracteres. Es la memoria del modelo,
+  pero fuera del modelo.
+- **`classify`**: fuerza un JSON Schema con `matches[{label,evidence}]` y `enum`
+  con tus etiquetas, temperatura 0 y `think=False`. El informe agrupa
+  coincidencias por etiqueta y separa las respuestas que no fueron JSON válido.
+- **`ask`**: calcula embeddings efímeros con `qwen:gpu`, combina similitud coseno
+  con léxico IDF, descarta fragmentos vecinos repetidos e inyecta solo `k` bloques
+  hasta `--context-chars`. **No escribe** `~/.ollama-rag/index.json`: cada
+  documento tiene su propia búsqueda en memoria.
+
+Opciones comunes: `-m` (default `gemma3:q4`), `--chunk-chars` (700), `--overlap`
+(100), `--ctx` (2048), `--max-tokens` (256), `-t` (0), `--out`, `--restart`.
+En `ask`: `--path` (obligatorio), `--embed-model`, `-k` (3) y `--context-chars`
+(3600).
+
+> `oflow` no llama a la API de ningún proveedor de pago. Si el entorno apunta a un
+> HOST externo, el comando se detiene con un mensaje que sugiere `ofree flow`.
+
+---
+
+## 13. Benchmarks y decisiones ya probadas
 
 | Configuración | tok/s |
 |---|---:|
@@ -913,7 +984,7 @@ Detalles operativos:
 
 ---
 
-## 13. Importar otro GGUF (plantilla)
+## 14. Importar otro GGUF (plantilla)
 
 ```bash
 cat > /home/onion/Documentos/ModelsIA/Modelfile.NOMBRE <<'EOF'
@@ -933,7 +1004,7 @@ como experimento documentado, no como modelo de uso diario.
 
 ---
 
-## 14. Solución de problemas
+## 15. Solución de problemas
 
 | Síntoma | Causa / solución |
 |---|---|
@@ -955,7 +1026,7 @@ como experimento documentado, no como modelo de uso diario.
 
 ---
 
-## 15. Mantenimiento y reversión
+## 16. Mantenimiento y reversión
 
 ```bash
 watch -n 2 sensors                 # temperatura, consumo, ventilador

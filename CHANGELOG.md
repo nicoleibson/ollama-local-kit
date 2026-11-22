@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-11-22 (decimotercera tanda)
+
+- Nuevo `oflow` (`ollama-cli.py flow`, alias `oflow`) para modelos de contexto
+  corto, con cuatro modos: `map` (dividir y conquistar), `slide` (ventana
+  deslizante con `carry.txt`), `classify` (JSON Schema con `enum` de etiquetas e
+  informe agrupado) y `ask` (RAG efímero por documento con `qwen:gpu`, sin
+  escribir el índice global).
+- El estado vive en `~/.ollama-flow/<trabajo>/` (`state.json`, `results.jsonl`,
+  `carry.txt`, `report.md`); es reanudable repitiendo el comando y se protege
+  con una firma de configuración que exige `--restart` si cambias prompt,
+  modelo o fragmentación. `--limit N` también reanuda. `OLLAMA_FLOW_DIR`
+  permite mover la carpeta.
+- El modelo recibe solo `chunk + carry` o `chunk + pregunta`, con `stream=False`,
+  `think=False`, temperatura 0, `--ctx 2048` y `--max-tokens 256`. Se bloquean
+  proveedores externos (oflow siempre local).
+- Añadidos alias en `~/.bashrc` y en `config/bashrc-ollama-block.txt`, línea en
+  `config`, autocompletado y documentación en manual (sección 12), README e
+  INSTALL. Nueva prueba sin inferencia real: `/tmp/opencode/test-flow.py`.
+- Verificado sin llamadas a proveedores de pago: fragmentación por párrafos,
+  reanudación, `--restart`, carry acotado, JSON Schema, degradación sin JSON,
+  RAG efímero sin índice global, bloqueo externo y defaults `flow`/`oflow`.
+
 ## 2026-11-22 (duodécima tanda)
 
 - `onvidia` usa `nvidia/nemotron-3.5-lightning-30b-a3b` como modelo por defecto

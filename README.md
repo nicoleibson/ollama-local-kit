@@ -84,6 +84,10 @@ ogemini chat -m gemini-4-hydrogen "explica esto"
 oagent                                        # REPL agente con herramientas
 oagent --root ~/ollama-local-kit --session trabajo
 ofree chat -m glm-5.3-flash "hola"            # gratuito: traduce a nemotron3:gpu
+oflow map informe.md --prompt "Resume en 3 viñetas" --out informe
+oflow slide novela.txt --prompt "Continúa el resumen" --carry 300
+oflow classify contrato.md --labels rescision,confidencialidad
+oflow ask --path contrato.md "¿hay cláusula de rescisión?" -k 3
 ochat --session proyecto "hola"               # conversación persistente
 oprompt use resumen "texto a resumir"         # plantilla reutilizable
 ocli bench --history                          # historial de rendimiento
@@ -105,6 +109,7 @@ Funciones principales de `ollama-cli.py`:
 | `status` / `doctor` | diagnóstico y verificación |
 | `debug` | errores, peticiones y tracebacks de la CLI (`~/.ollama-debug.log`) |
 | `embed` | embeddings directos con `qwen:gpu` |
+| `flow` / `oflow` | flujos de contexto corto: `map`, `slide`, `classify`, `ask` |
 | `list` / `show` / `import` / `rm` / `stop` | gestión de modelos |
 
 ## Programar y depurar
@@ -118,6 +123,21 @@ y `orag ask "..."`; para ejecutar comprobaciones, `oact "run_tests"` o
 Los comandos de `act` muestran `[->]`, duración y `[OK]`/`[X] exit N`. Todo queda en
 `~/.ollama-debug.log`: `odebug` resume, `odebug --full` muestra tracebacks y
 `ocli --debug ...` añade trazas en directo. Ver manual, sección 9.
+
+## Flujos con contexto corto
+
+`oflow` resuelve el cuello de botella de los 2048 tokens: **el modelo no recuerda
+nada, la herramienta guarda el estado en disco**. Cuatro modos:
+
+- `map`: dividir y conquistar; aplica un `--prompt` a cada fragmento.
+- `slide`: ventana deslizante; realimenta un `carry.txt` acotado con `--carry`.
+- `classify`: micro-preguntas con JSON Schema e informe agrupado por etiqueta.
+- `ask`: RAG efímero por documento con `qwen:gpu`, sin tocar el índice global.
+
+Cada trabajo vive en `~/.ollama-flow/<nombre>/` (`state.json`,
+`results.jsonl`, `carry.txt`, `report.md`). Si se corta, repite el mismo comando:
+salta lo ya hecho; si cambia la configuración, pide `--restart`. Solo local:
+rechaza proveedores externos. Ver manual, sección 12.
 
 ## Nube bajo demanda
 

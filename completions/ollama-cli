@@ -1,5 +1,5 @@
 # Autocompletado para ollama-cli.py y sus alias (ocli, ochat, oact, orag,
-# orun, owatch, oprompt, osess, odgpu, ocode, odebug, ocloud, onvidia, ogemini, oagent, ofree).
+# orun, owatch, oprompt, osess, odgpu, ocode, odebug, ocloud, onvidia, ogemini, oagent, ofree, oflow).
 # Se instala desde ~/.bashrc; no necesita bash-completion adicional.
 
 _ollama_cli_models() {
@@ -68,6 +68,7 @@ _ollama_cli_complete() {
         ogemini) w=(ollama-cli.py "${COMP_WORDS[@]:1}") ;;
         oagent) w=(ollama-cli.py agent "${COMP_WORDS[@]:1}") ;;
         ofree) w=(ollama-cli.py "${COMP_WORDS[@]:1}") ;;
+        oflow) w=(ollama-cli.py flow "${COMP_WORDS[@]:1}") ;;
         *)     w=("${COMP_WORDS[@]}") ;;
     esac
 
@@ -91,16 +92,16 @@ _ollama_cli_complete() {
         --session)
             COMPREPLY=( $(compgen -W "$(_ollama_cli_sessions)" -- "$cur") )
             return ;;
-        --catalog|--file)
+        --catalog|--file|--path)
             COMPREPLY=( $(_ollama_cli_files "$cur") )
             return ;;
-        --gpu|--ctx|--max-tokens|--chunk-chars|--overlap|--batch|--max-files|--max-mb|--tokens|--preview|--context-chars|-k|--top-k|-t|--temperature|--min-score)
+        --gpu|--ctx|--max-tokens|--chunk-chars|--overlap|--batch|--max-files|--max-mb|--tokens|--preview|--context-chars|--carry|--limit|--out|-k|--top-k|-t|--temperature|--min-score)
             return ;;
     esac
 
     # Subcomandos principales.
     if (( cword == 1 )); then
-        COMPREPLY=( $(compgen -W "chat ask act run do bench status watch doctor debug code agent list show stop import rm embed rag prompt session config --help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "chat ask act run do bench status watch doctor debug code agent flow oflow list show stop import rm embed rag prompt session config --help" -- "$cur") )
         return
     fi
 
@@ -117,6 +118,10 @@ _ollama_cli_complete() {
         COMPREPLY=( $(compgen -W "list show add rm use --help" -- "$cur") )
         return
     fi
+    if [[ "$sub" == flow && $cword -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W "map slide classify ask --help" -- "$cur") )
+        return
+    fi
 
     # Posicionales.
     if [[ "$sub" == session && ( "$sub2" == show || "$sub2" == clear ) && "$cur" != -* ]]; then
@@ -128,6 +133,10 @@ _ollama_cli_complete() {
         return
     fi
     if [[ "$sub" == rag && "$sub2" == index && "$cur" != -* ]]; then
+        COMPREPLY=( $(_ollama_cli_files "$cur") )
+        return
+    fi
+    if [[ "$sub" == flow && ( "$sub2" == map || "$sub2" == slide || "$sub2" == classify ) && "$cur" != -* ]]; then
         COMPREPLY=( $(_ollama_cli_files "$cur") )
         return
     fi
@@ -176,6 +185,8 @@ _ollama_cli_complete() {
             opts="--help --from --lines --stdin --ctx --max-tokens --no-schema --dry-run --no-stream --stats --session -m --model" ;;
         agent)
             opts="--help --root --session --new-session --steps --history --ctx --max-tokens --temperature --bash-timeout --yes --allow-dangerous --no-schema -m --model" ;;
+        flow)
+            opts="--help --out --restart --limit --prompt --carry --labels --chunk-chars --overlap --ctx --max-tokens --temperature --path --embed-model -k --context-chars -m --model" ;;
         debug)
             opts="--help --lines --full --clear" ;;
         import)
@@ -197,4 +208,4 @@ _ollama_cli_complete() {
     COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
 }
 
-complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag orun owatch oprompt osess odgpu ocode odebug ocloud onvidia ogemini oagent ofree
+complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag orun owatch oprompt osess odgpu ocode odebug ocloud onvidia ogemini oagent ofree oflow

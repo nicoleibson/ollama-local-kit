@@ -11,6 +11,7 @@ alias odgpu='$HOME/ollama-scripts/gemma4-dgpu.sh'
 alias ocode='$HOME/ollama-cli.py code'
 alias odebug='$HOME/ollama-cli.py debug'
 alias oagent='$HOME/ollama-cli.py agent'
+alias oflow='$HOME/ollama-cli.py flow'
 ofree() {
     OLLAMA_KIT_LOCAL=1 \
     OLLAMA_KIT_PROVIDER=ollama \
