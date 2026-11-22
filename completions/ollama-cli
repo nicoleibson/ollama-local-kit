@@ -1,0 +1,130 @@
+# Autocompletado para ollama-cli.py y sus alias (ocli, ochat, oact, orag).
+# Se instala desde ~/.bashrc; no necesita bash-completion adicional.
+
+_ollama_cli_models() {
+    ollama list 2>/dev/null | awk 'NR>1 {print $1}'
+}
+
+_ollama_cli_files() {
+    local c="$1"
+    if [[ "$c" == .* ]]; then
+        compgen -f -- "$c"
+    else
+        compgen -f -- "$c" | grep -vE '(^|/)\.'
+    fi
+}
+
+_ollama_cli_catalog() {
+    python3 - <<'PY' 2>/dev/null
+import json, os
+p = os.environ.get("OLLAMA_COMMANDS", "/home/onion/ollama-commands.json")
+try:
+    d = json.load(open(p))
+    print("\n".join(k for k in d if not k.startswith("_")))
+except Exception:
+    pass
+PY
+}
+
+_ollama_cli_complete() {
+    COMPREPLY=()
+    local cur prev sub sub2
+    local -a w=()
+
+    # Los alias ya incluyen el subcomando; lo añadimos para unificar la lógica.
+    case "${COMP_WORDS[0]}" in
+        ochat) w=(ollama-cli.py chat "${COMP_WORDS[@]:1}") ;;
+        oact)  w=(ollama-cli.py act  "${COMP_WORDS[@]:1}") ;;
+        orag)  w=(ollama-cli.py rag  "${COMP_WORDS[@]:1}") ;;
+        orun)  w=(ollama-cli.py run  "${COMP_WORDS[@]:1}") ;;
+        owatch) w=(ollama-cli.py watch "${COMP_WORDS[@]:1}") ;;
+        *)     w=("${COMP_WORDS[@]}") ;;
+    esac
+
+    local cword=$((COMP_CWORD + ${#w[@]} - ${#COMP_WORDS[@]}))
+    cur="${w[cword]:-}"
+    prev="${w[cword-1]:-}"
+    sub="${w[1]:-}"
+    sub2="${w[2]:-}"
+
+    # Opciones que esperan un valor.
+    case "$prev" in
+        -m|--model|--act-model)
+            COMPREPLY=( $(compgen -W "$(_ollama_cli_models)" -- "$cur") )
+            return ;;
+        --intent)
+            COMPREPLY=( $(compgen -W "act rag chat" -- "$cur") )
+            return ;;
+        --embed-model)
+            COMPREPLY=( $(compgen -W "qwen:gpu qwen:latest" -- "$cur") )
+            return ;;
+        --catalog|--file)
+            COMPREPLY=( $(_ollama_cli_files "$cur") )
+            return ;;
+        --gpu|--ctx|--max-tokens|--chunk-chars|--overlap|--batch|--max-files|--max-mb|--tokens|--preview|--context-chars|-k|--top-k|-t|--temperature|--min-score)
+            return ;;
+    esac
+
+    # Subcomandos principales.
+    if (( cword == 1 )); then
+        COMPREPLY=( $(compgen -W "chat ask act run do bench status watch doctor list show stop import rm embed rag config --help" -- "$cur") )
+        return
+    fi
+
+    # Subcomandos de rag.
+    if [[ "$sub" == rag && $cword -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W "index ask list clear --help" -- "$cur") )
+        return
+    fi
+
+    # Posicionales.
+    if [[ "$sub" == rag && "$sub2" == index && "$cur" != -* ]]; then
+        COMPREPLY=( $(_ollama_cli_files "$cur") )
+        return
+    fi
+    if [[ "$sub" == import && $cword -eq 3 && "$cur" != -* ]]; then
+        COMPREPLY=( $(_ollama_cli_files "$cur") )
+        return
+    fi
+    if [[ "$cur" != -* && ( "$sub" == bench || "$sub" == show || "$sub" == stop ) ]]; then
+        COMPREPLY=( $(compgen -W "$(_ollama_cli_models)" -- "$cur") )
+        return
+    fi
+    if [[ "$sub" == act && $cword -ge 2 && "$cur" != -* ]]; then
+        COMPREPLY=( $(compgen -W "$(_ollama_cli_catalog)" -- "$cur") )
+        return
+    fi
+
+    # Opciones según el subcomando.
+    local opts=""
+    case "$sub" in
+        chat|ask)
+            opts="--help --system --temperature --ctx --max-tokens --think --no-stream --stats --format -t -m --model" ;;
+        act)
+            opts="--help --dry-run --list --free --yes --allow-dangerous --catalog -m --model" ;;
+        run|do)
+            opts="--help --intent --model -m --act-model --top-k -k --dry-run --no-stream --stats --system --catalog" ;;
+        watch)
+            opts="--help --interval --count --no-clear" ;;
+        bench)
+            opts="--help --tokens" ;;
+        import)
+            opts="--help --gpu --force" ;;
+        rm)
+            opts="--help --yes" ;;
+        embed)
+            opts="--help --file --preview -m --model" ;;
+        rag)
+            case "$sub2" in
+                index) opts="--help --embed-model --chunk-chars --overlap --batch --max-files --max-mb" ;;
+                ask)   opts="--help --embed-model --min-score --ctx --max-tokens --context-chars --no-stream -m --model -k --top-k" ;;
+                clear) opts="--help --yes" ;;
+                *)     opts="--help" ;;
+            esac ;;
+        *)
+            opts="--help" ;;
+    esac
+    COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+}
+
+complete -F _ollama_cli_complete ollama-cli.py ocli ochat oact orag

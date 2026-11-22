@@ -1,0 +1,13 @@
+# >>> ollama-cli personal >>>
+alias ocli='$HOME/ollama-cli.py'
+alias ochat='$HOME/ollama-cli.py chat'
+alias oact='$HOME/ollama-cli.py act'
+alias orag='$HOME/ollama-cli.py rag'
+alias orun='$HOME/ollama-cli.py run'
+alias owatch='$HOME/ollama-cli.py watch'
+# >>> ollama-cli completion >>>
+if [[ -r "$HOME/.local/share/bash-completion/completions/ollama-cli" ]]; then
+    source "$HOME/.local/share/bash-completion/completions/ollama-cli"
+fi
+# <<< ollama-cli completion <<<
+# <<< ollama-cli personal <<<

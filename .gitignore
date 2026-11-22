@@ -1,0 +1,26 @@
+# Índice RAG generado (vectores, puede ser grande)
+.ollama-rag/
+*.index
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Copias de seguridad y configuraciones locales con posible información sensible
+Backups.Ollama/
+*.bak
+*.bak[0-9]*
+*.old
+.env
+.env.*
+*.local
+
+# Editor / sistema
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
