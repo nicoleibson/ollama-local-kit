@@ -78,6 +78,7 @@ ocode tests archivo.py                        # tests unitarios con JSON Schema
 odebug -n 5                                   # últimos errores y eventos
 ocloud list                                   # modelos cloud (necesita API key)
 ocloud chat -m glm-5.3 "revisa este diff"     # nube bajo demanda
+onvidia chat "resume esto"                    # Nemotron 3.5 Lightning por defecto
 onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
 ogemini chat -m gemini-4-hydrogen "explica esto"
 oagent                                        # REPL agente con herramientas
@@ -131,8 +132,10 @@ También hay adaptadores para **NVIDIA NIM** (`onvidia`, key en
 `~/.nvidia-api-key`) y **Google Gemini** (`ogemini`, key en
 `~/.gemini-api-key`), ambos OpenAI-compatible. NVIDIA controla el razonamiento
 con `reasoning_effort` pero no ofrece JSON Schema ni embeddings en esa API;
-Gemini sí admite ambos, aunque su thinking no se puede desactivar. `ocli` sigue
-siendo local por defecto. Ver manual, sección 11.
+Gemini sí admite ambos, aunque su thinking no se puede desactivar. `onvidia`
+usa `nvidia/nemotron-3.5-lightning-30b-a3b` por defecto (1M de contexto), del
+catálogo gratuito del NVIDIA Developer Program para prototipar, con límites de
+tasa. `ocli` sigue siendo local por defecto. Ver manual, sección 11.
 
 Ningún modelo cloud de Ollama es gratis: "Pay as you go" no tiene suscripción,
 pero cobra por token y necesita créditos. Para trabajar sin créditos usa `ofree`:

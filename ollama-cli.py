@@ -82,6 +82,19 @@ def free_model(name):
     return FREE_MODEL_MAP.get(name, name)
 
 
+# NVIDIA NIM tiene un modelo de referencia gratuito para prototipar; se aplica
+# cuando el comando no recibe -m. En local se mantienen los defaults de siempre.
+PROVIDER_DEFAULT_MODELS = {
+    "nvidia": "nvidia/nemotron-3.5-lightning-30b-a3b",
+}
+LOCAL_DEFAULT_MODELS = {
+    "chat": "gemma3:q4",
+    "ask": "gemma3:q4",
+    "agent": "nemotron3:gpu",
+    "rag": "nemotron3:gpu",
+}
+
+
 if LOCAL_ONLY:
     PROVIDER = "ollama"
     API_KEY = ""
@@ -1113,6 +1126,8 @@ def cmd_config(args):
         print("GRATIS: solo modelos locales; se ignoran API keys y HOST remoto.")
     print(f"HOST: {HOST}")
     print(f"API key: {'configurada' if API_KEY else f'no configurada ({PROVIDER_KEYVARS[PROVIDER]})'}")
+    if PROVIDER in PROVIDER_DEFAULT_MODELS:
+        print(f"Modelo por defecto: {PROVIDER_DEFAULT_MODELS[PROVIDER]}")
     if EXTERNAL:
         print(f"Archivo de key: {PROVIDER_KEYFILES[PROVIDER]}")
     print(f"Overrides: {OVERRIDE}")
@@ -1995,7 +2010,9 @@ def build_parser():
 
     c = sub.add_parser("chat", aliases=["ask"], help="chatear (sin prompt = interactivo)")
     c.add_argument("prompt", nargs="*")
-    c.add_argument("-m", "--model", default="gemma3:q4")
+    c.add_argument("-m", "--model", default=None,
+                   help="por defecto: gemma3:q4 en local, "
+                        "nvidia/nemotron-3.5-lightning-30b-a3b en NVIDIA")
     c.add_argument("--system", help="mensaje de sistema")
     c.add_argument("-t", "--temperature", type=float, default=0.3)
     c.add_argument("--ctx", type=int, default=2048)
@@ -2050,8 +2067,9 @@ def build_parser():
     cd.set_defaults(func=cmd_code)
 
     ag = sub.add_parser("agent", help="REPL de agente con herramientas y confirmaciones")
-    ag.add_argument("-m", "--model", default="nemotron3:gpu",
-                    help="modelo del bucle (default: nemotron3:gpu)")
+    ag.add_argument("-m", "--model", default=None,
+                    help="modelo del bucle (default: nemotron3:gpu en local, "
+                         "nvidia/nemotron-3.5-lightning-30b-a3b en NVIDIA)")
     ag.add_argument("--root", default=".", help="carpeta de trabajo (default: la actual)")
     ag.add_argument("--session", help="guardar/recuperar la conversación")
     ag.add_argument("--new-session", action="store_true", help="empezar de cero")
@@ -2170,8 +2188,9 @@ def build_parser():
 
     rq = rs.add_parser("ask", help="recuperar fragmentos y responder")
     rq.add_argument("question", nargs="+")
-    rq.add_argument("-m", "--model", default="nemotron3:gpu",
-                    help="nemotron3:gpu sintetiza mejor; gemma3:q4 tiende a copiar fragmentos")
+    rq.add_argument("-m", "--model", default=None,
+                    help="por defecto: nemotron3:gpu en local (sintetiza mejor; "
+                         "gemma3:q4 tiende a copiar fragmentos)")
     rq.add_argument("--embed-model", default="qwen:gpu")
     rq.add_argument("-k", "--top-k", dest="k", type=int, default=3)
     rq.add_argument("--min-score", type=float, default=0.0)
@@ -2401,6 +2420,11 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
     DEBUG = getattr(args, "debug", False) or bool(os.environ.get("OLLAMA_KIT_DEBUG"))
+    if getattr(args, "model", None) is None and (
+            PROVIDER in PROVIDER_DEFAULT_MODELS
+            or getattr(args, "cmd", "") in LOCAL_DEFAULT_MODELS):
+        args.model = (PROVIDER_DEFAULT_MODELS.get(PROVIDER)
+                      or LOCAL_DEFAULT_MODELS[args.cmd])
     if LOCAL_ONLY:
         for field in ("model", "models", "embed_model"):
             value = getattr(args, field, None)

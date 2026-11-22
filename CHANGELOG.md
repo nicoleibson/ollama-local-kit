@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-22 (duodécima tanda)
+
+- `onvidia` usa `nvidia/nemotron-3.5-lightning-30b-a3b` como modelo por defecto
+  cuando no se pasa `-m` (chat, ask, agent, rag ask, code, run y prompt use).
+  Los defaults locales (`gemma3:q4`, `nemotron3:gpu`) no cambian y `ofree`
+  sigue traduciendo nombres cloud. `onvidia config` muestra el modelo.
+- Documentado el acceso gratuito del NVIDIA Developer Program: endpoints NIM
+  para prototipado, sujetos a límites por modelo y carga, ~1.000 créditos y
+  ~40 RPM como referencia reportada (no garantizada), y la necesidad de
+  desplegar o pagar para producción o límites mayores.
+- Verificado sin inferencias: defaults por proveedor, override explícito con
+  `-m`, `ofree`, regresión de agente/proveedores y `config`.
+
 ## 2026-11-22 (undécima tanda)
 
 - Modo gratuito `ofree`: `OLLAMA_KIT_LOCAL=1` fuerza el Ollama local, ignora

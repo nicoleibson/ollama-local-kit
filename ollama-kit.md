@@ -822,6 +822,7 @@ printf 'TU_KEY_DE_GEMINI' > ~/.gemini-api-key; chmod 600 ~/.gemini-api-key
 
 onvidia config                                       # PROVEEDOR: nvidia
 onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
+onvidia chat "resume esto"                           # usa el modelo por defecto
 ogemini config                                       # PROVEEDOR: gemini
 ogemini chat -m gemini-4-hydrogen "explica esto"
 ocli chat -m nemotron3:gpu "hola"                    # vuelves al local
@@ -836,6 +837,32 @@ ocli chat -m nemotron3:gpu "hola"                    # vuelves al local
 | JSON Schema | No aparece en el schema del endpoint: `act` bloqueado y `code` exige `--no-schema` | Sí (`response_format`): `act` y `code` funcionan |
 | Embeddings | No expone `/embeddings` en esa API: la CLI lo bloquea y sugiere `qwen:gpu` u `ogemini` | Sí, `/embeddings` con `gemini-embedding-001` |
 | Listado | `/models` | `/models` |
+
+`onvidia` tiene como modelo por defecto `nvidia/nemotron-3.5-lightning-30b-a3b`
+(30B totales / 3B activos, hasta 1M de contexto y soporte en español). Se aplica
+a `chat`, `ask`, `agent`, `rag ask`, `code`, `run` y `prompt use` cuando no se
+pasa `-m`; `ocli`/`ofree` conservan sus defaults locales. `onvidia config` lo
+muestra como `Modelo por defecto`.
+
+### Acceso gratuito del NVIDIA Developer Program
+
+Unirse al [NVIDIA Developer Program](https://developer.nvidia.com/developer-program)
+es gratis y da acceso a los endpoints NIM alojados en
+[build.nvidia.com](https://build.nvidia.com/), además de contenedores NIM
+descargables para self-host en hasta 16 GPUs mientras dure la membresía. Es un
+acceso de **evaluación y prototipado**, no producción, y está sujeto a límites:
+el [FAQ oficial de NIM](https://forums.developer.nvidia.com/t/nvidia-nim-faq/300317)
+indica que el número de llamadas depende del modelo y de la carga concurrente, y
+que se consulta en la esquina superior derecha de build.nvidia.com. En foros se
+reportan ~1.000 créditos de prueba y ~40 RPM como referencia habitual, pero
+NVIDIA no garantiza esa cifra ni ofrece una recarga gratuita documentada; para
+más capacidad hay que desplegar o pagar.
+
+Por eso conviene reservar `onvidia` para consultas puntuales que necesitan mucho
+contexto o razonamiento, y dejar `ofree` para programar, RAG y agente. Como
+NVIDIA no admite JSON Schema aquí, `act` está bloqueado y `code`/`agent`
+requieren `--no-schema`. El parámetro `--ctx` no se envía al endpoint (este lo
+gestiona), pero `--max-tokens` sí; `--think` activa `reasoning_effort: medium`.
 
 Detalles operativos:
 

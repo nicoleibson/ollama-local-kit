@@ -206,6 +206,7 @@ odebug -n 5
 ocli config                                   # debe decir MODO: LOCAL
 oagent --help                                 # debe mostrar el REPL de agente
 ofree config                                  # debe decir GRATIS: solo modelos locales
+OLLAMA_KIT_PROVIDER=nvidia ollama-cli.py config | grep 'Modelo por defecto'  # opcional
 # oagent --root /tmp                          # prueba en carpeta desechable
 ```
 
