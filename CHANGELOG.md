@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 (vigésima tanda)
+
+- Endurecido `ollama-scripts/gemma4-dgpu.sh`: `trap` separado para `EXIT`, `INT`
+  (`130`) y `TERM` (`143`), aviso y limpieza de un PIDFILE huérfano al arrancar,
+  y mensaje específico cuando el servicio principal de 11434 no responde. El
+  uso normal de `odgpu` no cambia.
+
 ## 2026-11-22 (decimonovena tanda)
 
 - Añadido `config/Modelfile.nemotron3-gpu`: ruta canónica en

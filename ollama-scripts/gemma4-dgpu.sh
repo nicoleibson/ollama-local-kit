@@ -16,28 +16,41 @@ CLI="/home/onion/ollama-cli.py"
 LOG="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.log"
 PIDFILE="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.pid"
 
-cleanup() {
-    if [[ -f "$PIDFILE" ]]; then
-        local pid
-        pid=$(cat "$PIDFILE" 2>/dev/null || true)
-        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            kill -TERM "$pid" 2>/dev/null || true
+stop_pidfile() {
+    local announce="${1:-0}"
+    [[ -f "$PIDFILE" ]] || return 0
+    local pid
+    pid=$(cat "$PIDFILE" 2>/dev/null || true)
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        if (( announce )); then
+            echo "Aviso: PID $pid de una ejecución anterior sigue vivo; se termina." >&2
         fi
-        rm -f "$PIDFILE"
+        kill -TERM "$pid" 2>/dev/null || true
     fi
+    rm -f "$PIDFILE"
 }
-trap cleanup EXIT INT TERM
+
+cleanup() { stop_pidfile 0; }
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
 if curl -sf --max-time 2 "$HOST/api/tags" >/dev/null 2>&1; then
     echo "ERROR: ya hay una instancia escuchando en $PORT. Ciérrala antes de continuar." >&2
     exit 1
 fi
 
-if ! curl -sf --max-time 2 http://127.0.0.1:11434/api/tags | grep -q "$MODEL"; then
+if ! MAIN_TAGS=$(curl -sf --max-time 2 http://127.0.0.1:11434/api/tags); then
+    echo "ERROR: el servicio principal no responde en 11434. Arranca Ollama y reintenta." >&2
+    exit 1
+fi
+if ! grep -q "$MODEL" <<<"$MAIN_TAGS"; then
     echo "ERROR: falta el tag $MODEL. Créalo con:" >&2
     echo "  ollama create $MODEL -f ~/ollama-local-kit/config/Modelfile.gemma4-dgpu" >&2
     exit 1
 fi
+
+stop_pidfile 1
 
 nohup env \
     OLLAMA_HOST="$HOST" \
