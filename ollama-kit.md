@@ -1516,8 +1516,8 @@ con apuntar al modelo habitual.
 
 ```bash
 ollama create nemotron3:codex -f ~/ollama-local-kit/config/Modelfile.nemotron3-codex
-ocodex --config                       # regenera perfil y catálogo, no lanza Codex
-ocodex                                # abre Codex con el perfil ollama-launch
+ocodex --config                       # regenera perfil, lo fusiona y no lanza Codex
+ocodex                                # abre Codex con el proveedor Ollama en config.toml
 ocodex --exec "Responde exactamente HOLA"   # prueba no interactiva, sandbox read-only
 ```
 
@@ -1529,7 +1529,19 @@ y `thinking`) y solo cambia `num_ctx` a **65536** y temperatura 0. El wrapper
    generar/actualizar el perfil (`base_url = http://127.0.0.1:11434/v1/`);
 2. ajusta `context_window` en `model.json` a 65536, porque Ollama anuncia el
    contexto nativo del modelo (1M) pero el tag real se creó con 64k;
-3. lanza `codex --profile ollama-launch` (o `codex exec` con `--exec`).
+3. fusiona ese perfil en `~/.codex/config.toml` dentro de bloques marcados
+   (`# >>> ocodex root >>>` y `# >>> ocodex sections >>>`) y lanza `codex` sin
+   `--profile` (o `codex exec` con `--exec`). La fusión es idempotente y valida
+   el TOML antes de escribir.
+
+**Aviso "Running without the shared background server":** en Codex `0.169.0`
+aparece en la ventana *Warnings* cuando se lanza con `--profile`. El código de
+Codex (`daemon_startup::exclusion`) marca esa opción como incompatible con el
+servidor compartido y fuerza modo embebido; el texto exacto es
+`--profile requires embedded mode`. No es un error del modelo ni del proveedor:
+el aviso desaparece al no pasar `--profile`, que es justamente lo que hace la
+fusión en `config.toml`. Añadir `--no-daemon` **no** lo elimina: solo cambia el
+motivo del mensaje.
 
 **Sin `:dgpu`:** el wrapper rechaza cualquier `CODEX_MODEL` con ese tag. Antes
 había un perfil residual que apuntaba a `gemma4:dgpu` en el puerto 11434; ese tag es de la

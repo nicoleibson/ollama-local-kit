@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-23 (cuadragésima primera tanda)
+
+- **Aviso de Codex resuelto:** Codex `0.169.0` fuerza modo embebido y muestra
+  `Running without the shared background server: --profile requires embedded
+  mode` en la ventana *Warnings* cuando se usa `--profile`. Confirmado en el
+  código fuente (`daemon_startup::exclusion`).
+- `ollama-scripts/codex-local.sh` ya no pasa `--profile`: fusiona el perfil
+  generado por `ollama launch codex` en `~/.codex/config.toml` mediante bloques
+  marcados, valida el TOML y es idempotente. Así Codex puede usar el daemon
+  compartido. `--no-daemon` se descartó porque solo cambia el motivo del aviso.
+- `tests/test-codex.py` comprueba la fusión, la ausencia de `--profile`, la
+  idempotencia y la guardia `:dgpu`. Manual y README actualizados.
+- Verificado: `ocodex --exec "Responde exactamente HOLA"` → `HOLA`,
+  `nemotron3:codex … CONTEXT 65536`, daemon `0.169.0` en ejecución.
+
 ## 2026-11-23 (cuadragésima tanda)
 
 - **Codex local conectado:** `ollama launch codex --model nemotron3:codex`

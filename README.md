@@ -329,7 +329,9 @@ ocodex --exec "Responde exactamente HOLA"   # prueba efímera y read-only
 ```
 
 El wrapper usa `ollama launch codex --model nemotron3:codex`, bloquea tags
-`:dgpu` y ajusta el catálogo a 65536. Verificado: respuesta `HOLA` y
+`:dgpu`, ajusta el catálogo a 65536 y fusiona el perfil en `config.toml` para
+no pasar `--profile` (Codex 0.169.0 lo declara incompatible con el daemon
+compartido y muestra un aviso en *Warnings*). Verificado: respuesta `HOLA` y
 `ollama ps` con `CONTEXT 65536`. Sin créditos ni APIs de pago.
 
 ## Seguridad
