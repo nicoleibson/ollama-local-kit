@@ -316,6 +316,22 @@ modelo solo emite `{"op":"...","trace":["CODE:valor"],"args":{},"answer":{
 prosa; si el modelo la escribe ahí, la CLI la promueve a `answer.summary`. Ver
 manual, secciones 9, 10 y 18.
 
+## Codex con modelos locales
+
+`ollama launch codex` crea el perfil `ollama-launch`, pero Codex necesita 64k de
+contexto y el servicio principal del kit usa 2048. El kit añade el tag
+`nemotron3:codex` (`num_ctx=65536`, `tools`) y el alias `ocodex`:
+
+```bash
+ocodex --config                            # regenera perfil y catálogo
+ocodex                                     # Codex interactivo con modelos locales
+ocodex --exec "Responde exactamente HOLA"   # prueba efímera y read-only
+```
+
+El wrapper usa `ollama launch codex --model nemotron3:codex`, bloquea tags
+`:dgpu` y ajusta el catálogo a 65536. Verificado: respuesta `HOLA` y
+`ollama ps` con `CONTEXT 65536`. Sin créditos ni APIs de pago.
+
 ## Seguridad
 
 - El modelo **nunca ejecuta texto generado** en modo catálogo: elige un identificador

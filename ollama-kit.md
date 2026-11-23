@@ -1503,3 +1503,45 @@ en este entorno porque las tres vías de captura disponibles (`import`,
 `ffmpeg x11grab` y `PIL.ImageGrab`) devolvieron una imagen negra; la comprobación
 se hizo por introspección de Tkinter: 12 pestañas, geometría y widgets presentes,
 sin excepciones.
+
+## 19. Codex con modelos locales (`ocodex`)
+
+Ollama 0.33.2 incluye `ollama launch codex`, que crea un perfil dedicado en
+`~/.codex/ollama-launch.config.toml` y un catálogo en `~/.codex/model.json`.
+Codex exige **al menos 64k de contexto** y modelos con capacidad `tools`; el
+servicio principal del kit tiene `OLLAMA_CONTEXT_LENGTH=2048`, así que no basta
+con apuntar al modelo habitual.
+
+**Solución del kit:** un tag exclusivo para Codex y un wrapper.
+
+```bash
+ollama create nemotron3:codex -f ~/ollama-local-kit/config/Modelfile.nemotron3-codex
+ocodex --config                       # regenera perfil y catálogo, no lanza Codex
+ocodex                                # abre Codex con el perfil ollama-launch
+ocodex --exec "Responde exactamente HOLA"   # prueba no interactiva, sandbox read-only
+```
+
+`Modelfile.nemotron3-codex` parte de `nemotron3:gpu` (4B, `completion`, `tools`
+y `thinking`) y solo cambia `num_ctx` a **65536** y temperatura 0. El wrapper
+`~/ollama-scripts/codex-local.sh` hace tres cosas:
+
+1. llama a `ollama launch codex --model nemotron3:codex --config -y` para
+   generar/actualizar el perfil (`base_url = http://127.0.0.1:11434/v1/`);
+2. ajusta `context_window` en `model.json` a 65536, porque Ollama anuncia el
+   contexto nativo del modelo (1M) pero el tag real se creó con 64k;
+3. lanza `codex --profile ollama-launch` (o `codex exec` con `--exec`).
+
+**Sin `:dgpu`:** el wrapper rechaza cualquier `CODEX_MODEL` con ese tag. Antes
+había un perfil residual que apuntaba a `gemma4:dgpu` en el puerto 11434; ese tag es de la
+R7 260X y en la iGPU agota la memoria. Tampoco se usa `odgpu`: esa instancia es
+solo para `chat`/`bench`, no para Codex.
+
+**Verificado:** `ocodex --exec "Responde exactamente HOLA"` devolvió `HOLA` y
+`ollama ps` mostró `nemotron3:codex … CONTEXT 65536`. El modo `--exec` usa
+`--ephemeral`, `-s read-only` y `--skip-git-repo-check`: no guarda sesiones ni
+permite escrituras. La sesión interactiva (`ocodex`) usa el sandbox normal de
+Codex y pide confirmación según su configuración.
+
+**Alternativa descartada:** `qwen35:codex` con `num_ctx=65536` se probó en iGPU
+(`Not enough memory for command submission`) y en CPU (no terminó en 9 minutos).
+No se conserva el tag; `nemotron3:codex` es la única opción soportada.

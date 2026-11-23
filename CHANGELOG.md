@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-23 (cuadragésima tanda)
+
+- **Codex local conectado:** `ollama launch codex --model nemotron3:codex`
+  genera `~/.codex/ollama-launch.config.toml` y `~/.codex/model.json`. Antes el
+  perfil apuntaba a `gemma4:dgpu` en 11434 (tag de la R7 260X).
+- Nuevo tag `nemotron3:codex` (`config/Modelfile.nemotron3-codex`) con
+  `num_ctx=65536`, porque Codex exige ≥64k y el servicio principal tiene 2048.
+  Verificado con `ollama ps`: `CONTEXT 65536`.
+- Nuevo wrapper `ollama-scripts/codex-local.sh` (alias `ocodex`): regenera el
+  perfil, alinea `context_window` del catálogo a 65536, rechaza modelos `:dgpu`
+  y ofrece `--config` y `--exec` (Codex efímero, `read-only`, sin guardar
+  sesiones).
+- `qwen35:codex` se probó en iGPU (OOM) y en CPU (demasiado lento); el tag se
+  retiró. `nemotron3:codex` es la única opción soportada.
+- Manual, README, alias de `.bashrc` y `tests/test-codex.py` añadidos.
+
 ## 2026-11-23 (trigésima novena tanda)
 
 - **Modo máquina del agente:** el prompt del sistema pasa a ser una

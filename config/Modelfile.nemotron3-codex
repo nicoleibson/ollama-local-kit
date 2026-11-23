@@ -1,0 +1,5 @@
+# Tag dedicado a Codex: ctx 65536 (mínimo recomendado por la integración).
+# La instancia principal sigue en 2048; este tag solo cambia el contexto.
+FROM nemotron3:gpu
+PARAMETER num_ctx 65536
+PARAMETER temperature 0
