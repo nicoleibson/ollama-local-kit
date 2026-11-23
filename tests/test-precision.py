@@ -180,4 +180,31 @@ except SystemExit as exc:
 else:
     raise AssertionError("run --fast --precise debió rechazarse")
 
+# Con OLLAMA_KIT_PRECISE=1 el choque con --fast se explica mejor.
+saved_precise = mod.PRECISE
+mod.PRECISE = True
+try:
+    env_fast = mod.build_parser().parse_args(["rag", "ask", "--fast", "qué dice"])
+    mod.apply_precision_profile(env_fast)
+    assert env_fast.precise_from_env is True, vars(env_fast)
+    try:
+        mod.apply_fast_profile(env_fast)
+    except SystemExit as exc:
+        assert "OLLAMA_KIT_PRECISE=1" in str(exc), exc
+    else:
+        raise AssertionError("--fast con OLLAMA_KIT_PRECISE=1 debió rechazarse")
+
+    flag_fast = mod.build_parser().parse_args(
+        ["rag", "ask", "--fast", "--precise", "qué dice"])
+    mod.apply_precision_profile(flag_fast)
+    assert flag_fast.precise_from_env is False, vars(flag_fast)
+    try:
+        mod.apply_fast_profile(flag_fast)
+    except SystemExit as exc:
+        assert "OLLAMA_KIT_PRECISE=1" not in str(exc), exc
+    else:
+        raise AssertionError("--fast --precise debió rechazarse")
+finally:
+    mod.PRECISE = saved_precise
+
 print("PRECISIÓN Y PRESUPUESTO: TODO OK")

@@ -133,6 +133,8 @@ def apply_precision_profile(args) -> bool:
     """Activa razonamiento, temperatura 0 y contexto amplio cuando se pide."""
     if not (getattr(args, "precise", False) or PRECISE):
         return False
+    # Recuerda si el perfil preciso viene del entorno y no del usuario.
+    args.precise_from_env = bool(PRECISE) and not getattr(args, "precise", False)
     args.precise = True
     args.reasoning = True
     setattr(args, "temperature", 0.0)
@@ -145,12 +147,22 @@ def apply_precision_profile(args) -> bool:
     return True
 
 
+def fast_conflict_message(args=None) -> str:
+    """Explica por qué `--fast` choca, distinguiendo flag explícito y entorno."""
+    message = "--fast no se combina con --precise ni --reasoning"
+    if getattr(args, "precise_from_env", False) or (
+            PRECISE and not getattr(args, "precise", False)):
+        message += (" (OLLAMA_KIT_PRECISE=1 está activo; "
+                    "desactívalo para usar --fast)")
+    return message
+
+
 def apply_fast_profile(args) -> bool:
     """RAG rápida: Qwen3 0.6B con presupuesto corto; un `-m` explícito manda."""
     if not getattr(args, "fast", False):
         return False
     if getattr(args, "precise", False) or getattr(args, "reasoning", False):
-        raise SystemExit("--fast no se combina con --precise ni --reasoning")
+        raise SystemExit(fast_conflict_message(args))
     if getattr(args, "model", None) is None:
         args.model = FAST_MODEL
     default_tokens = 192 if TASK_MODE else 384
@@ -1900,7 +1912,7 @@ def cmd_run(args):
         raise SystemExit("Escribe una instrucción. Ej: ocli run 'muestra la fecha'")
     if getattr(args, "fast", False) and (
             getattr(args, "precise", False) or getattr(args, "reasoning", False)):
-        raise SystemExit("--fast no se combina con --precise ni --reasoning")
+        raise SystemExit(fast_conflict_message(args))
 
     rag_data = rag_load()
     intents = ["act", "chat"] + (["rag"] if rag_data["chunks"] else [])

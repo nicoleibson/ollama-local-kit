@@ -514,7 +514,9 @@ tareas. En perfil tareas el default es `gemma3:gpu`; `--precise` usa
 agente y RAG. `--precise` y `--reasoning` fijan temperatura 0 y contexto amplio,
 pero un `-m` explícito conserva ese modelo. `--fast` usa `qwen3:06b` con 300
 tokens y no se combina con `--precise` ni `--reasoning`; un `-m` explícito
-también manda sobre `--fast`. Para saber qué modelo está activo en cada rol,
+también manda sobre `--fast`. Si `OLLAMA_KIT_PRECISE=1` está exportado, `--fast`
+se rechaza con un mensaje que lo indica; desactívalo para la RAG rápida. Para
+saber qué modelo está activo en cada rol,
 `ocli config` es más fiable que preguntárselo a RAG.
 
 **Verificado:** el manual y los 16 scripts generan unos 40 fragmentos (el número

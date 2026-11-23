@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-23 (trigésima tercera tanda)
+
+- `--fast` ahora explica el choque cuando el perfil preciso viene del entorno:
+  con `OLLAMA_KIT_PRECISE=1` el mensaje añade «(OLLAMA_KIT_PRECISE=1 está
+  activo; desactívalo para usar --fast)» y distingue ese caso de un `--precise`
+  escrito por el usuario. Mismo comportamiento en `orag ask` y `orun`.
+  Aserciones nuevas en `tests/test-precision.py`; 10/10 pruebas.
+
 ## 2026-11-23 (trigésima segunda tanda)
 
 - Limpieza de temporales: se borraron en `/tmp/opencode` los 266 directorios de
