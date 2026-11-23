@@ -742,7 +742,7 @@ oagent                                         # REPL, raíz = directorio actual
 oagent --prompt "resume este repo"             # una sola tarea y salir
 oagent --reasoning --prompt "analiza este diff"  # respaldo nemotron3:gpu
 oagent --root ~/ollama-local-kit --session trabajo
-oagent -m gemma3:q4 --steps 4                  # más rápido, menos pasos
+oagent -m nemotron3:gpu --steps 6              # recomendado para el bucle
 ogemini agent --root ~/ollama-local-kit        # Gemini también admite schema
 ```
 
@@ -754,6 +754,20 @@ tareas, 8 con `--reasoning`). Cada decisión se imprime como
 `RAZONAMIENTO AGENTE:`; con `--prompt` se ejecuta una sola petición y se sale sin
 REPL. La pestaña Agente de `ogui` usa esta modalidad y nunca pasa `--yes` ni
 `--allow-dangerous`.
+
+**Modelo recomendado:** `nemotron3:gpu`. Los modelos de 1B (`gemma3:q4`,
+`gemma3:1b`, `lfm25:350m`, `bonsai:q1`, `qwen3:06b`) fallan a menudo el JSON del
+bucle: la CLI avisa al arrancar y, si no hay decisión válida, lo dice en vez de
+terminar en silencio. En el agente el pensamiento del modelo va desactivado
+(`think:false`): el razonamiento visible es el campo `thought` de cada decisión,
+y así el presupuesto `--max-tokens` (512) se dedica al JSON completo.
+
+**Arranque con inventario:** si la petición habla de analizar, revisar, leer o
+explicar archivos, el agente ejecuta primero un `list` local de la raíz (sin
+llamar al modelo) para partir de datos reales. También completa argumentos
+obvios que el modelo omite (por ejemplo, `read` sin ruta cuando la carpeta tiene
+un único archivo) y devuelve los errores de herramienta al modelo en lugar de
+abortar. Si repite la misma acción, se detiene para no gastar tiempo.
 
 | Herramienta | Qué hace | Permiso |
 |---|---|---|
@@ -1176,6 +1190,9 @@ como experimento documentado, no como modelo de uso diario.
 | `powerprofilesctl set performance: invalid choice` | Normal: este sistema solo tiene `power-saver`/`balanced`; usar `cpupower` |
 | `does not support chat` / `generate` con qwen | Es embedding: usar `/api/embed` |
 | `Not enough memory for command submission` con Gemma4 en la iGPU | El modelo no cabe ahí; usa `gemma4:cpu` (`num_gpu 0`) u `odgpu` para la R7 260X |
+| `gemma4:dgpu*` da error de memoria en el servicio principal | Esos tags son de la R7 260X: la CLI los rechaza fuera del puerto 11435; usa `odgpu --safe-fit` (chat) o un tag `:gpu` |
+| El agente no responde o responde vacío | Modelo demasiado pequeño para el JSON del bucle: usa `-m nemotron3:gpu`; para análisis de un archivo concreto, `ocode explain ARCHIVO` |
+| El agente repite la misma herramienta | Se detiene solo; reformula con una ruta o pregunta más concreta, o sube `--steps` |
 | Gemma4 devuelve `response` vacío | Está gastando los tokens en `<think>`; la CLI y `odgpu` envían `think:false` |
 | El enrutador `run` elige mal | Usar `orun --intent act\|rag\|chat ...` o revisar con `--dry-run` |
 | El chat con `--session` olvida cosas | El historial supera `num_ctx=2048`; usa `--new-session` o conversaciones más cortas |

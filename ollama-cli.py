@@ -340,7 +340,13 @@ def api_headers():
 
 def http_detail(code, body):
     detail = body[:300]
-    if "add usage credits" in body.lower() or "subscribe" in body.lower():
+    low = body.lower()
+    if any(token in low for token in
+           ("not enough memory", "devicelost", "out of memory", "vk::")):
+        detail += (" | La GPU se quedó sin memoria para ese modelo: usa un tag :gpu "
+                   "más pequeño (gemma3:gpu, nemotron3:gpu), cierra otras apps o "
+                   "reinicia la instancia.")
+    if "add usage credits" in low or "subscribe" in low:
         detail += (" | Los modelos cloud no son gratis: usa 'ofree' o un modelo "
                    "local con 'ocli'.")
     if EXTERNAL and code in (401, 402, 403, 429):
@@ -520,7 +526,23 @@ def api_prepare(path, payload):
     return OPENAI_PATHS[path], json.dumps(body).encode()
 
 
+def dgpu_model_error(model):
+    """Los tags :dgpu solo funcionan en la instancia aislada de la R7 260X."""
+    if not isinstance(model, str) or ":dgpu" not in model:
+        return None
+    if HOST.rstrip("/").endswith(":11435"):
+        return None
+    return (f"El modelo {model} está pensado para la R7 260X (GPU 1) en la "
+            f"instancia aislada del puerto 11435; en el servicio principal (iGPU) "
+            f"se queda sin memoria. Usa 'odgpu --safe-fit' para chat o un tag :gpu "
+            f"(gemma3:gpu, nemotron3:gpu) para el agente.")
+
+
 def api(path, payload=None, method=None, timeout=300):
+    if isinstance(payload, dict):
+        error = dgpu_model_error(payload.get("model"))
+        if error:
+            raise SystemExit(error)
     started = time.time()
     prepared = api_prepare(path, payload)
     if prepared:
@@ -2096,23 +2118,52 @@ def agent_schema():
             "thought": {"type": "string",
                         "description": "Razonamiento breve en español, una frase"},
             "tool": {"type": "string", "enum": list(AGENT_TOOL_NAMES)},
-            "args": {"type": "object",
-                     "description": "Argumentos de la herramienta; vacío para answer"},
+            "args": {
+                "type": "object",
+                "description": "Argumentos de la herramienta; vacío para answer",
+                "properties": {
+                    "path": {"type": "string",
+                             "description": "ruta relativa dentro de la carpeta"},
+                    "start": {"type": "integer", "description": "primera línea"},
+                    "lines": {"type": "integer", "description": "líneas a leer"},
+                    "pattern": {"type": "string", "description": "regex de grep"},
+                    "query": {"type": "string", "description": "búsqueda RAG"},
+                    "k": {"type": "integer", "description": "fragmentos RAG"},
+                    "content": {"type": "string", "description": "texto a escribir"},
+                    "old": {"type": "string", "description": "texto a reemplazar"},
+                    "new": {"type": "string", "description": "texto nuevo"},
+                    "command": {"type": "string", "description": "comando bash"},
+                },
+                "additionalProperties": False,
+            },
             "answer": {"type": "string",
                        "description": "Respuesta final, solo cuando tool=answer"},
         },
-        "required": ["tool"],
+        "required": ["thought", "tool", "args"],
     }
 
 
 def agent_system(root):
+    try:
+        names = sorted(p.name + ("/" if p.is_dir() else "")
+                       for p in Path(root).iterdir()
+                       if p.name not in AGENT_BLOCKED
+                       and not p.name.startswith(".ollama-"))
+        listing = ", ".join(names[:15]) + (" ..." if len(names) > 15 else "")
+    except OSError:
+        listing = ""
+    extra = f" Contenido de la raíz: {listing}." if listing else ""
     return (
-        "Eres un agente de programación en una terminal. Trabajas SOLO dentro de "
-        f"{root}. Devuelve SOLO un objeto JSON, sin markdown ni texto fuera del JSON, "
-        "con esta forma: {\"thought\":\"frase breve\",\"tool\":\"...\",\"args\":{...},\"answer\":\"...\"}. "
-        "Elige tool=answer para responder; para write, edit o bash el usuario deberá "
-        "confirmar antes de ejecutar. Usa read/list/grep/rag para investigar antes de "
-        "modificar nada. Args por herramienta: "
+        "Eres un agente de programación en una terminal. Tienes acceso real a los "
+        f"archivos de {root} con las herramientas list, read, grep y rag; nunca "
+        "digas que no puedes leer archivos ni pidas que te peguen el código. "
+        f"Trabajas SOLO dentro de esa carpeta.{extra} "
+        "Devuelve SOLO un objeto JSON, sin markdown ni texto fuera del JSON, con "
+        "esta forma: {\"thought\":\"frase breve\",\"tool\":\"...\",\"args\":{...},\"answer\":\"...\"}. "
+        "Para analizar un proyecto empieza con list {\"path\":\".\"} y luego read "
+        "del archivo relevante. Elige tool=answer cuando ya tengas la respuesta y "
+        "rellena siempre 'answer' con el texto final. Para write, edit o bash el "
+        "usuario deberá confirmar antes de ejecutar. Args por herramienta: "
         "read {path, start?, lines?}; list {path?}; grep {pattern, path?, max?}; "
         "rag {query, k?}; write {path, content}; edit {path, old, new}; "
         "bash {command}. No propongas rutas absolutas ni que salgan de la carpeta de trabajo."
@@ -2137,6 +2188,13 @@ def agent_resolve(root, value, must_exist=False):
 
 def agent_read(root, a):
     path = agent_resolve(root, a.get("path"), must_exist=True)
+    if path.is_dir():
+        try:
+            files = [x.name for x in sorted(path.iterdir()) if x.is_file()][:5]
+        except OSError:
+            files = []
+        pista = f" Prueba read de uno de: {', '.join(files)}." if files else ""
+        raise SystemExit(f"'{a.get('path')}' es una carpeta; usa list.{pista}")
     if not path.is_file():
         raise SystemExit(f"No es un archivo: {path}")
     lines = path.read_text(errors="replace").splitlines()
@@ -2329,9 +2387,9 @@ def agent_call(messages, args):
             "num_predict": args.max_tokens,
         },
     }
-    flag = thinking_for(args.model)
-    if flag is not None:
-        payload["think"] = flag
+    # En el bucle del agente el razonamiento va en 'thought'; pedir además el
+    # pensamiento del modelo (Nemotron) agotaba num_predict y dejaba el JSON vacío.
+    payload["think"] = False
     if NO_SCHEMA and not args.no_schema:
         raise SystemExit(
             f"{PROVIDER} no admite JSON Schema aquí: usa 'ocli agent' (local) u "
@@ -2339,12 +2397,70 @@ def agent_call(messages, args):
         )
     if not (NO_SCHEMA and args.no_schema):
         payload["format"] = agent_schema()
-    data, r, retried = api_chat_json(payload, agent_schema())
+        schema = agent_schema()
+    else:
+        # Sin 'format' el JSON viene del texto: exigir solo lo imprescindible.
+        schema = {"type": "object", "required": ["tool"],
+                  "properties": {"tool": {"type": "string"}}}
+    data, r, retried = api_chat_json(payload, schema)
     if retried:
         print("(JSON del agente revalidado tras un reintento)")
     if data.get("tool") not in AGENT_TOOL_NAMES:
         raise SystemExit(f"El agente eligió una herramienta desconocida: {data.get('tool')!r}")
     return data, r
+
+
+AGENT_INVENTORY_HINTS = re.compile(
+    r"\b(analiz|revis|explica|explora|mira|lee|c[oó]digo|proyecto|archivo|carpeta)",
+    re.IGNORECASE)
+
+
+AGENT_WEAK_MODELS = frozenset({
+    "gemma3:q4", "gemma3:1b", "lfm25:350m", "bonsai:q1", "qwen3:06b",
+})
+
+
+def agent_needs_inventory(text):
+    """Tareas sobre el contenido de la carpeta empiezan con un list local."""
+    return bool(AGENT_INVENTORY_HINTS.search(text or ""))
+
+
+def agent_normalize(root, tool, a, fallback_query=""):
+    """Completa argumentos obvios cuando el modelo los deja vacíos."""
+    a = dict(a) if isinstance(a, dict) else {}
+    if tool == "list" and not a.get("path"):
+        a["path"] = "."
+    if tool == "read" and str(a.get("path") or "").strip() in ("", ".", "./"):
+        try:
+            files = [x.name for x in sorted(Path(root).iterdir())
+                     if x.is_file() and x.name not in AGENT_BLOCKED]
+        except OSError:
+            files = []
+        if len(files) == 1:
+            a["path"] = files[0]
+    if tool == "rag" and not a.get("query") and fallback_query:
+        a["query"] = fallback_query
+    return a
+
+
+def agent_decide(messages, args, used_tool):
+    """Pide una decisión; si 'answer' viene vacío, reintenta con una pista."""
+    decision, stats = agent_call(messages, args)
+    tool = decision.get("tool")
+    answer = str(decision.get("answer") or "").strip()
+    if tool == "answer" and not answer:
+        nudge = ("Tu JSON llegó sin texto en 'answer'. Devuelve otro objeto JSON; "
+                 "si respondes, rellena 'answer' con la respuesta.")
+        if not used_tool:
+            nudge += (" Tienes herramientas: usa list/read/grep para mirar los "
+                      "archivos antes de responder.")
+        decision, stats = agent_call(
+            messages + [
+                {"role": "assistant",
+                 "content": json.dumps(decision, ensure_ascii=False)},
+                {"role": "user", "content": nudge},
+            ], args)
+    return decision, stats
 
 
 def cmd_agent(args):
@@ -2368,6 +2484,9 @@ def cmd_agent(args):
 
     single = bool(str(getattr(args, "prompt", "") or "").strip())
     print(f"AGENTE | modelo: {args.model} | proveedor: {PROVIDER} | raíz: {root}")
+    if args.model in AGENT_WEAK_MODELS:
+        print(f"AVISO: {args.model} es pequeño para el bucle del agente; "
+              f"prueba -m nemotron3:gpu o usa 'ocode explain|review ARCHIVO'.")
     if single:
         print("TAREA ÚNICA | razonamiento visible | sin confirmaciones automáticas\n")
     else:
@@ -2437,20 +2556,61 @@ def cmd_agent(args):
             continue
 
         history.append({"role": "user", "content": line})
+        used_tool = False
+        if agent_needs_inventory(line) and args.steps >= 2:
+            try:
+                listing = agent_list(root, {})
+            except SystemExit:
+                listing = ""
+            if listing:
+                decision = {"thought": "Listo la carpeta antes de decidir.",
+                            "tool": "list", "args": {}}
+                history.append({"role": "assistant",
+                                "content": json.dumps(decision, ensure_ascii=False)})
+                history.append({"role": "user",
+                                "content": f"RESULTADO de list:\n{listing}"})
+                used_tool = True
+                print("[list] inventario inicial", flush=True)
+                print(listing[:4000])
+        last_action = None
         for _ in range(max(1, args.steps)):
             messages = [{"role": "system", "content": agent_system(root)}] + history
-            decision, stats = agent_call(messages, args)
+            try:
+                decision, stats = agent_decide(messages, args, used_tool)
+            except SystemExit as exc:
+                print(f"(el agente no devolvió una decisión válida: {exc})")
+                print("(prueba '-m nemotron3:gpu', sube --max-tokens o reformula "
+                      "la tarea)")
+                break
+            tool = decision.get("tool")
+            answer = str(decision.get("answer") or "").strip()
             thought = decision.get("thought")
             print("RAZONAMIENTO AGENTE: " +
                   (str(thought).strip() if thought else "(sin texto de decisión)"))
-            tool = decision.get("tool")
             if tool == "answer":
-                answer = str(decision.get("answer", ""))
-                print(answer)
-                history.append({"role": "assistant", "content": answer})
+                if answer:
+                    print(answer)
+                    history.append({"role": "assistant", "content": answer})
+                else:
+                    print("(el modelo no devolvió respuesta. Prueba con "
+                          "'-m gemma3:gpu' o '-m nemotron3:gpu', o reformula "
+                          "la tarea.)")
                 break
+            used_tool = True
+            action = json.dumps([tool, decision.get("args") or {}],
+                                sort_keys=True, ensure_ascii=False)
+            if action == last_action:
+                print("(el agente repite la misma acción; se detiene para no "
+                      "gastar tiempo. Reformula o usa -m nemotron3:gpu)")
+                break
+            last_action = action
             print(f"[{tool}]", flush=True)
-            result = agent_run_tool(tool, decision.get("args", {}), args, root, undo)
+            try:
+                tool_args = agent_normalize(root, tool, decision.get("args", {}),
+                                            line)
+                result = agent_run_tool(tool, tool_args, args, root, undo)
+            except SystemExit as exc:
+                result = f"ERROR: {exc}"
             print(result[:4000])
             history.append({"role": "assistant",
                             "content": json.dumps(decision, ensure_ascii=False)})
@@ -3027,7 +3187,8 @@ def build_parser():
                     help="máximo de herramientas por petición")
     ag.add_argument("--history", type=int, default=20, help="mensajes conservados en memoria")
     ag.add_argument("--ctx", type=int, default=2048)
-    ag.add_argument("--max-tokens", type=int, default=192 if TASK_MODE else 512)
+    ag.add_argument("--max-tokens", type=int, default=512 if TASK_MODE else 768,
+                    help="el JSON del agente necesita espacio para thought+answer")
     ag.add_argument("-t", "--temperature", type=float, default=0.0 if TASK_MODE else 0.2)
     ag.add_argument("--reasoning", action="store_true",
                     help="usar el modelo de respaldo nemotron3:gpu")

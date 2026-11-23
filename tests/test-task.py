@@ -112,6 +112,7 @@ def fake_agent_api(path, payload=None, **kwargs):
     return {"message": {"thinking": "ELIJO ANSWER",
                         "content": json.dumps({"tool": "answer",
                                                "thought": "tarea breve",
+                                               "args": {},
                                                "answer": "LISTO"})},
             "eval_count": 6}
 
@@ -126,7 +127,7 @@ with tempfile.TemporaryDirectory() as tmp:
     out3 = io.StringIO()
     with patch.object(mod, "api", fake_agent_api), contextlib.redirect_stdout(out3):
         mod.cmd_agent(agent_ns)
-    assert "think" not in seen["payload"], seen["payload"]
+    assert seen["payload"].get("think") is False, seen["payload"]
     assert "TAREA ÚNICA" in out3.getvalue(), out3.getvalue()
     assert "RAZONAMIENTO:" in out3.getvalue(), out3.getvalue()
     assert "RAZONAMIENTO AGENTE:" in out3.getvalue(), out3.getvalue()

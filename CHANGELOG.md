@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-11-23 (trigésima quinta tanda)
+
+- **Agente más robusto** (fallos vistos en la GUI con `gemma3:q4`,
+  `gemma3:gpu` y `gemma4:dgpu-safe`):
+  - Si el modelo devuelve `tool=answer` sin texto, se reintenta una vez con una
+    pista y, si sigue vacío, se avisa; antes terminaba en silencio.
+  - El JSON Schema exige `thought`, `tool` y `args`, con propiedades de `args`
+    acotadas (`additionalProperties: false`) para evitar claves inventadas.
+  - El agente envía `think:false`: el razonamiento visible es el campo `thought`.
+    Con Nemotron el pensamiento agotaba `num_predict` y dejaba el JSON vacío
+    (4m35s y fallo); ahora responde en ~30-70 s.
+  - `--max-tokens` por defecto 512 en perfil tareas.
+  - Errores de herramienta (ruta inválida, carpeta en `read`…) se devuelven al
+    modelo como `ERROR:` en vez de abortar la tarea.
+  - `read` sin ruta usa el único archivo de la raíz; `list` usa `.`; `rag` usa la
+    petición como consulta. Las tareas de análisis listan la carpeta antes de la
+    primera decisión (sin llamar al modelo).
+  - Si repite la misma acción, se detiene con un mensaje claro.
+  - Aviso al arrancar con modelos pequeños (`gemma3:q4`, `gemma3:1b`,
+    `lfm25:350m`, `bonsai:q1`, `qwen3:06b`).
+- **Guardia de tags `:dgpu`**: fuera de la instancia aislada del puerto 11435 se
+  rechazan con un mensaje que remite a `odgpu --safe-fit`; antes fallaban con
+  `radv: Not enough memory` y `ErrorDeviceLost`. Los errores de memoria de la GPU
+  ahora incluyen una recomendación (`gemma3:gpu`, cerrar apps).
+- **GUI**: la pestaña Agente arranca con `nemotron3:gpu` y muestra
+  «recomendado: nemotron3:gpu»; los tags `:dgpu` ya no se ofrecen en los combos
+  de chat/agente.
+- Manual y README con la recomendación de modelo, el inventario inicial y tres
+  filas nuevas de solución de problemas. Pruebas ampliadas en `test-agent.py`
+  (respuesta vacía, JSON inválido, errores de herramienta, acción repetida,
+  guardia `:dgpu`, aviso de modelo pequeño). 11/11 pruebas y `SELFTEST OK`.
+
 ## 2026-11-23 (trigésima cuarta tanda)
 
 - **Detección de índice desfasado**: `rag index` guarda en el índice el tamaño y

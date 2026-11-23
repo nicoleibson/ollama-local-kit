@@ -1438,11 +1438,15 @@ class AgenteTab(BaseTab):
         ttk.Entry(form, textvariable=self.prompt).grid(
             row=0, column=1, columnspan=3, sticky="ew", padx=(4, 8))
         ttk.Label(form, text="Modelo:").grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.model_var = tk.StringVar(value="automático")
+        # El bucle del agente necesita un modelo que siga el JSON Schema; los
+        # pequeños (gemma3:q4, gemma3:1b...) se quedan en respuestas vacías.
+        self.model_var = tk.StringVar(value=REASONING_MODEL)
         combo = ttk.Combobox(form, textvariable=self.model_var, width=20, state="readonly",
-                             values=["automático", DEFAULT_MODEL, REASONING_MODEL])
+                             values=["automático", REASONING_MODEL, DEFAULT_MODEL])
         combo.grid(row=1, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
         app.optional_model_combos.append(combo)
+        ttk.Label(form, text="recomendado: nemotron3:gpu",
+                  foreground="#7f8c96").grid(row=1, column=3, sticky="w", pady=(6, 0))
         self.reasoning_var = tk.BooleanVar()
         ttk.Checkbutton(form, text="Usar respaldo (--reasoning)",
                         variable=self.reasoning_var).grid(
@@ -1794,10 +1798,13 @@ class KitGUI(tk.Tk):
             combo.configure(values=values)
             if current not in values:
                 combo.set(DEFAULT_MODEL if DEFAULT_MODEL in values else values[0])
+        # Los tags :dgpu son para la instancia aislada de la R7 260X; en el
+        # servicio principal (iGPU) se quedan sin memoria, así que no se ofrecen.
+        optional = ["automático"] + [v for v in values if ":dgpu" not in v]
         for combo in self.optional_model_combos:
             current = combo.get()
-            combo.configure(values=["automático"] + values)
-            if current not in ["automático"] + values:
+            combo.configure(values=optional)
+            if current not in optional:
                 combo.set("automático")
 
     def refresh_all(self) -> None:
