@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-23 (trigésima segunda tanda)
+
+- Limpieza de temporales: se borraron en `/tmp/opencode` los 266 directorios de
+  pruebas (`agente-*`, `osesion-*`, `ragtest`, `__pycache__`) y los 138 de
+  `oflow-*`/`oflow-docs-*`/`odgpu-test`; se conservaron informes, scripts y los
+  siete backups `index-before-*.json`.
+- `tests/test-agent.py`, `tests/test-flow.py` y `tests/test-session.py` ahora
+  crean sus temporales con un helper `tempdir()` que los borra con `atexit`
+  aunque la prueba falle. Así dejan de acumular basura en `/tmp/opencode`;
+  comprobado: cero directorios residuales tras ejecutar la batería completa.
+
 ## 2026-11-23 (trigésima primera tanda)
 
 - Nueva opción **`orag ask --fast`**: usa `qwen3:06b` con 300 tokens, mantiene

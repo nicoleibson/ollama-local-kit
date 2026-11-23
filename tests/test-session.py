@@ -1,7 +1,9 @@
+import atexit
 import contextlib
 import importlib.util
 import io
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -18,8 +20,15 @@ def load(**env):
         "cli_session_probe_" + str(abs(hash(tuple(env.items()))))[:6], CLI)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.SESSIONS_DIR = Path(tempfile.mkdtemp(prefix="osesion-", dir="/tmp/opencode"))
+    mod.SESSIONS_DIR = tempdir("osesion-")
     return mod
+
+
+def tempdir(prefix):
+    """Crea el temporal de la prueba y lo borra al salir, aunque falle."""
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir="/tmp/opencode"))
+    atexit.register(shutil.rmtree, path, True)
+    return path
 
 
 def capture(fn, *a):
@@ -30,7 +39,7 @@ def capture(fn, *a):
 
 
 m = load()
-root = Path(tempfile.mkdtemp(prefix="osesion-root-", dir="/tmp/opencode"))
+root = tempdir("osesion-root-")
 
 
 # --- chat interactivo: imprime el comando al cerrar -------------------------

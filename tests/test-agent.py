@@ -1,8 +1,10 @@
+import atexit
 import contextlib
 import importlib.util
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -13,11 +15,19 @@ for key in ("OLLAMA_KIT_PROVIDER", "OLLAMA_API_KEY", "NVIDIA_API_KEY",
             "GEMINI_API_KEY", "OLLAMA_HOST"):
     os.environ.pop(key, None)
 
+
+def tempdir(prefix):
+    """Crea el temporal de la prueba y lo borra al salir, aunque falle."""
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir="/tmp/opencode"))
+    atexit.register(shutil.rmtree, path, True)
+    return path
+
+
 spec = importlib.util.spec_from_file_location("cli_agent_probe", CLI)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
-root = Path(tempfile.mkdtemp(prefix="agente-", dir="/tmp/opencode"))
+root = tempdir("agente-")
 (root / "nota.txt").write_text("hola mundo\n", encoding="utf-8")
 
 decisions = iter([

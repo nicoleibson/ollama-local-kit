@@ -1,8 +1,10 @@
+import atexit
 import contextlib
 import importlib.util
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -16,17 +18,24 @@ ENV_KEYS = ("OLLAMA_KIT_PROVIDER", "OLLAMA_KIT_LOCAL", "OLLAMA_API_KEY",
 def load():
     for key in ENV_KEYS:
         os.environ.pop(key, None)
-    name = "cli_flow_probe_" + str(abs(hash(tempfile.mkdtemp())))[:8]
+    name = "cli_flow_probe_" + str(abs(hash(object())))[:8]
     spec = importlib.util.spec_from_file_location(name, CLI)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.FLOW_DIR = Path(tempfile.mkdtemp(prefix="oflow-", dir="/tmp/opencode"))
+    mod.FLOW_DIR = tempdir("oflow-")
     return mod
+
+
+def tempdir(prefix):
+    """Crea el temporal de la prueba y lo borra al salir, aunque falle."""
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir="/tmp/opencode"))
+    atexit.register(shutil.rmtree, path, True)
+    return path
 
 
 m = load()
 
-root = Path(tempfile.mkdtemp(prefix="oflow-docs-", dir="/tmp/opencode"))
+root = tempdir("oflow-docs-")
 doc = root / "contrato.md"
 doc.write_text(
     "La cláusula de rescisión PALABRA_UNO permite terminar el contrato.\n\n"
