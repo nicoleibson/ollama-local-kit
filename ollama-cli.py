@@ -2109,72 +2109,256 @@ AGENT_BLOCKED = {
     ".env", "id_ed25519", "id_ed25519.pub",
 }
 AGENT_TOOL_NAMES = ("answer", "read", "list", "grep", "rag", "write", "edit", "bash")
+AGENT_OPS = ("ANSWER", "READ", "LIST", "GREP", "RAG", "WRITE", "EDIT", "BASH")
+READONLY_TOOLS = ("answer", "read", "list", "grep", "rag")
+READONLY_OPS = ("ANSWER", "READ", "LIST", "GREP", "RAG")
+OP_TO_TOOL = {op: op.lower() for op in AGENT_OPS}
+TOOL_TO_OP = {tool.upper(): op for op, tool in OP_TO_TOOL.items()}
+TRACE_CODES = ("SCAN", "PICK", "READ", "LIST", "GREP", "RAG", "ANSWER",
+               "RETRY", "MOVE", "ERR", "AUTO")
+TRACE_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,23}(?::[^\s]{1,80})?$")
+ANSWER_STATUS = ("ok", "partial", "error")
 
 
-def agent_schema():
+def agent_schema_machine(readonly=False):
+    """Esquema estricto: op + traza de códigos + respuesta estructurada."""
+    ops = list(READONLY_OPS) if readonly else list(AGENT_OPS)
     return {
         "type": "object",
         "properties": {
-            "thought": {"type": "string",
-                        "description": "Razonamiento breve en español, una frase"},
-            "tool": {"type": "string", "enum": list(AGENT_TOOL_NAMES)},
+            "op": {"type": "string", "enum": ops},
+            "trace": {"type": "array", "minItems": 1, "maxItems": 4,
+                      "items": {"type": "string",
+                                "description": "CODE o CODE:value"}},
             "args": {
                 "type": "object",
-                "description": "Argumentos de la herramienta; vacío para answer",
                 "properties": {
-                    "path": {"type": "string",
-                             "description": "ruta relativa dentro de la carpeta"},
-                    "start": {"type": "integer", "description": "primera línea"},
-                    "lines": {"type": "integer", "description": "líneas a leer"},
-                    "pattern": {"type": "string", "description": "regex de grep"},
-                    "query": {"type": "string", "description": "búsqueda RAG"},
-                    "k": {"type": "integer", "description": "fragmentos RAG"},
-                    "content": {"type": "string", "description": "texto a escribir"},
-                    "old": {"type": "string", "description": "texto a reemplazar"},
-                    "new": {"type": "string", "description": "texto nuevo"},
-                    "command": {"type": "string", "description": "comando bash"},
+                    "path": {"type": "string"},
+                    "start": {"type": "integer"},
+                    "lines": {"type": "integer"},
+                    "pattern": {"type": "string"},
+                    "query": {"type": "string"},
+                    "k": {"type": "integer"},
+                    "content": {"type": "string"},
+                    "old": {"type": "string"},
+                    "new": {"type": "string"},
+                    "command": {"type": "string"},
                 },
                 "additionalProperties": False,
             },
-            "answer": {"type": "string",
-                       "description": "Respuesta final, solo cuando tool=answer"},
+            "answer": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": list(ANSWER_STATUS)},
+                    "summary": {"type": "string"},
+                    "facts": {"type": "array", "items": {"type": "string"}},
+                    "files": {"type": "array", "items": {"type": "string"}},
+                },
+                "additionalProperties": False,
+            },
         },
-        "required": ["thought", "tool", "args"],
+        "required": ["op", "trace", "args"],
     }
 
 
-def agent_system(root):
+def agent_system_machine(root, readonly=False):
+    """Instrucciones como especificación JSON: sin prosa para el modelo."""
+    ops = list(READONLY_OPS) if readonly else list(AGENT_OPS)
     try:
-        names = sorted(p.name + ("/" if p.is_dir() else "")
-                       for p in Path(root).iterdir()
-                       if p.name not in AGENT_BLOCKED
-                       and not p.name.startswith(".ollama-"))
-        listing = ", ".join(names[:15]) + (" ..." if len(names) > 15 else "")
+        entries = sorted(p.name + ("/" if p.is_dir() else "")
+                         for p in Path(root).iterdir()
+                         if p.name not in AGENT_BLOCKED
+                         and not p.name.startswith(".ollama-"))[:15]
     except OSError:
-        listing = ""
-    extra = f" Contenido de la raíz: {listing}." if listing else ""
-    return (
-        "Eres un agente de programación en una terminal local. Trabajas SOLO "
-        f"dentro de {root}. Tienes herramientas reales: list, read, grep y rag. "
-        "Úsalas para investigar los archivos; nunca digas que no puedes leerlos "
-        "ni pidas que te peguen el código.{extra} "
-        "Tu salida es SIEMPRE un objeto JSON válido, sin markdown ni texto fuera "
-        "del JSON. No expliques el formato, no pidas instrucciones y no repitas "
-        "el esquema: las instrucciones ya están aquí. "
-        "Campos: 'thought' = una frase corta, SIN llaves ni JSON; "
-        "'tool' = una de list|read|grep|rag|write|edit|bash|answer; "
-        "'args' = objeto con los argumentos de esa herramienta; "
-        "'answer' = el texto final para el usuario. "
-        "Para analizar código haz primero list {\"path\":\".\"} y después read del "
-        "archivo relevante. Cuando ya tengas la respuesta elige tool=answer y "
-        "rellena 'answer' con texto real; deja 'answer' vacío solo si estás "
-        "llamando a otra herramienta. Nunca respondas con 'answer' vacío ni con un "
-        "'thought' que contenga llaves. "
-        "Para write, edit o bash el usuario confirmará antes de ejecutar. Args: "
-        "read {path, start?, lines?}; list {path?}; grep {pattern, path?, max?}; "
-        "rag {query, k?}; write {path, content}; edit {path, old, new}; "
-        "bash {command}. No propongas rutas absolutas ni fuera de la carpeta de trabajo."
-    )
+        entries = []
+    spec = {
+        "v": 2,
+        "kind": "agent.machine",
+        "io": {"in": "task:string", "lang": "es", "out": "json:object",
+               "markdown": False, "prose": False, "extra_keys": False},
+        "root": str(root),
+        "root_entries": entries,
+        "fields": {
+            "op": {"type": "enum", "values": ops},
+            "trace": {"type": "string[]", "min": 1, "max": 4,
+                      "format": "CODE[:value]", "codes": list(TRACE_CODES),
+                      "forbid": ["answer_text", "json", "prose"]},
+            "args": {"type": "object", "by_op": {
+                "LIST": ["path?"], "READ": ["path", "start?", "lines?"],
+                "GREP": ["pattern", "path?", "max?"],
+                "RAG": ["query", "k?"], "WRITE": ["path", "content"],
+                "EDIT": ["path", "old", "new"], "BASH": ["command"],
+                "ANSWER": []}},
+            "answer": {"type": "object", "when": "op=ANSWER",
+                       "keys": {"status": "ok|partial|error",
+                                "summary": "string:es:nonempty",
+                                "facts": "string[]", "files": "string[]"},
+                       "required": ["summary"]},
+        },
+        "rules": [
+            "emit:one_json_object,language:es",
+            "no:markdown,no:schema_echo,no:ask_instructions",
+            "trace:codes_only,no:text_answer_in_trace",
+            "answer:object,answer.summary:nonempty_when_op=ANSWER",
+            "paths:relative_only,within_root",
+            "code_task:op=LIST,then:op=READ",
+        ],
+    }
+    return json.dumps(spec, ensure_ascii=False, separators=(",", ":"))
+
+
+def agent_schema(readonly=False):
+    """Alias conservado para llamadas internas y pruebas."""
+    return agent_schema_machine(readonly)
+
+
+def agent_system(root, readonly=False):
+    """Alias conservado; el prompt del agente es siempre JSON máquina."""
+    return agent_system_machine(root, readonly)
+
+
+def agent_answer_object(value):
+    """Normaliza answer a objeto: admite legacy string y JSON embebido."""
+    ans = {}
+    if isinstance(value, dict):
+        ans = dict(value)
+    elif isinstance(value, str):
+        raw = value.strip()
+        if raw.startswith("{") and raw.endswith("}"):
+            try:
+                parsed = json.loads(raw)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict):
+                ans = parsed
+            else:
+                ans = {"summary": raw}
+        elif raw:
+            ans = {"summary": raw}
+    status = str(ans.get("status") or "ok").lower()
+    if status not in ANSWER_STATUS:
+        status = "ok"
+    facts = ans.get("facts")
+    files = ans.get("files")
+    return {
+        "status": status,
+        "summary": str(ans.get("summary") or "").strip(),
+        "facts": [str(x).strip() for x in facts if str(x).strip()] if isinstance(facts, list) else [],
+        "files": [str(x).strip() for x in files if str(x).strip()] if isinstance(files, list) else [],
+    }
+
+
+def agent_answer_text(decision):
+    """Presentación legible del answer estructurado del modelo."""
+    answer = agent_answer_object(decision.get("answer") if isinstance(decision, dict) else None)
+    summary = answer["summary"]
+    if not summary and answer["facts"]:
+        summary = answer["facts"].pop(0)
+    lines = [summary or "(sin texto de respuesta)"]
+    if answer["facts"]:
+        lines += ["- " + fact for fact in answer["facts"][:5]]
+    if answer["files"]:
+        lines.append("Archivos: " + ", ".join(answer["files"][:5]))
+    return "\n".join(lines)
+
+
+def agent_trace_text(decision):
+    """Traza en código máquina; nunca se muestra vacía."""
+    trace = decision.get("trace") if isinstance(decision, dict) else None
+    if not isinstance(trace, list):
+        trace = [trace] if trace else []
+    codes = [str(x).strip() for x in trace if str(x).strip()]
+    if not codes:
+        return "(el modelo no devolvió texto de razonamiento)"
+    return " | ".join(codes)
+
+
+def agent_normalize_decision(value, readonly=False):
+    """Convierte legacy (tool/thought/answer:string) al formato máquina."""
+    data = value if isinstance(value, dict) else {}
+    raw_op = str(data.get("op") or data.get("tool") or "").strip().upper()
+    if not raw_op:
+        raise SystemExit("ERR:OP_MISSING")
+    op = TOOL_TO_OP.get(raw_op, raw_op)
+    if op not in AGENT_OPS:
+        raise SystemExit(f"ERR:OP_UNKNOWN:{raw_op}")
+    if readonly and op not in READONLY_OPS:
+        raise SystemExit(f"ERR:OP_READONLY:{op}")
+    args = data.get("args") if isinstance(data.get("args"), dict) else {}
+    raw_trace = data.get("trace", data.get("thought", []))
+    if not isinstance(raw_trace, list):
+        raw_trace = [raw_trace] if raw_trace else []
+    codes, prose = [], []
+    for item in raw_trace:
+        code = str(item).strip()
+        if not code:
+            continue
+        if code[:1] in ("{", "["):
+            codes.append("ERR:trace_format")
+        elif TRACE_CODE_RE.match(code):
+            codes.append(code)
+        else:
+            prose.append(code)
+    answer = agent_answer_object(data.get("answer"))
+    if prose and not answer["summary"]:
+        answer["summary"] = " ".join(prose).strip()
+        codes.append("MOVE:answer")
+    if not answer["summary"] and answer["facts"]:
+        answer["summary"] = answer["facts"].pop(0)
+        codes.append("MOVE:fact")
+    if not codes:
+        codes.append(f"AUTO:{op}")
+    return {"op": op, "trace": codes[:4], "args": dict(args), "answer": answer}
+
+
+def agent_machine_decision(op, trace, args=None):
+    """Construye una decisión máquina para acciones locales del bucle."""
+    return {"op": op, "trace": list(trace), "args": args or {},
+            "answer": agent_answer_object(None)}
+
+
+def agent_answer_from_history(messages):
+    """Recupera un answer previo si el modelo lo dejó vacío después."""
+    for item in reversed(messages or []):
+        if not isinstance(item, dict) or item.get("role") != "assistant":
+            continue
+        content = item.get("content")
+        if not str(content).startswith("{"):
+            continue
+        try:
+            data = json.loads(content)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        answer = agent_answer_object(data.get("answer"))
+        if answer["summary"]:
+            return answer
+    return None
+
+
+def agent_tool_result(op, result, ok=True):
+    """Resultado de herramienta como JSON para el siguiente turno."""
+    return json.dumps({"kind": "tool_result", "op": op, "ok": ok,
+                       "data": str(result)[:6000]}, ensure_ascii=False)
+
+
+def agent_evidence(history):
+    """Extrae (op, datos) del último resultado de herramienta del historial."""
+    for item in reversed(history or []):
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        content = str(item.get("content") or "")
+        try:
+            obj = json.loads(content)
+        except (ValueError, TypeError):
+            obj = None
+        if isinstance(obj, dict) and obj.get("kind") == "tool_result":
+            return str(obj.get("op") or ""), str(obj.get("data") or "")
+        if content.startswith("RESULTADO de "):
+            head, _, data = content.partition("\n")
+            return head.split("RESULTADO de ", 1)[1].split(":", 1)[0], data.strip()
+    return "", ""
 
 
 def agent_resolve(root, value, must_exist=False):
@@ -2364,8 +2548,11 @@ def agent_undo(undo):
     return f"No había copia de {path}."
 
 
-def agent_run_tool(tool, a, args, root, undo):
+def agent_run_tool(tool, a, args, root, undo, readonly=False):
     a = a if isinstance(a, dict) else {}
+    if readonly and tool not in READONLY_TOOLS:
+        raise SystemExit(f"'{tool}' no está disponible en una tarea de solo "
+                         "lectura; usa --yes en la CLI si quieres permitirlo.")
     if tool == "read":
         return agent_read(root, a)
     if tool == "list":
@@ -2383,7 +2570,7 @@ def agent_run_tool(tool, a, args, root, undo):
     raise SystemExit(f"Herramienta no admitida: {tool}")
 
 
-def agent_call(messages, args):
+def agent_call(messages, args, readonly=False):
     payload = {
         "model": args.model,
         "stream": False,
@@ -2394,8 +2581,8 @@ def agent_call(messages, args):
             "num_predict": args.max_tokens,
         },
     }
-    # En el bucle del agente el razonamiento va en 'thought'; pedir además el
-    # pensamiento del modelo (Nemotron) agotaba num_predict y dejaba el JSON vacío.
+    # La traza va en 'trace'; pedir además el pensamiento del modelo agotaba
+    # num_predict y dejaba el JSON vacío.
     payload["think"] = False
     if NO_SCHEMA and not args.no_schema:
         raise SystemExit(
@@ -2403,18 +2590,14 @@ def agent_call(messages, args):
             "'ogemini agent', o añade --no-schema para parsear JSON del texto."
         )
     if not (NO_SCHEMA and args.no_schema):
-        payload["format"] = agent_schema()
-        schema = agent_schema()
-    else:
-        # Sin 'format' el JSON viene del texto: exigir solo lo imprescindible.
-        schema = {"type": "object", "required": ["tool"],
-                  "properties": {"tool": {"type": "string"}}}
-    data, r, retried = api_chat_json(payload, schema)
+        # El modelo recibe el esquema estricto; la validación local es laxa para
+        # poder normalizar respuestas legacy (tool/thought) sin perderlas.
+        payload["format"] = agent_schema_machine(readonly)
+    validate = {"type": "object", "properties": {}}
+    data, r, retried = api_chat_json(payload, validate)
     if retried:
         print("(JSON del agente revalidado tras un reintento)")
-    if data.get("tool") not in AGENT_TOOL_NAMES:
-        raise SystemExit(f"El agente eligió una herramienta desconocida: {data.get('tool')!r}")
-    return data, r
+    return agent_normalize_decision(data, readonly), r
 
 
 AGENT_INVENTORY_HINTS = re.compile(
@@ -2545,42 +2728,50 @@ def agent_normalize(root, tool, a, fallback_query=""):
     return a
 
 
-def agent_decide(messages, args, used_tool):
-    """Pide una decisión; si 'answer' viene vacío, reintenta con una pista."""
-    decision, stats = agent_call(messages, args)
-    tool = decision.get("tool")
-    answer = str(decision.get("answer") or "").strip()
-    if tool == "answer" and not answer:
-        nudge = ("'answer' llegó vacío: eso no es una respuesta. No escribas el "
-                 "esquema ni pidas instrucciones. Elige una herramienta (list, "
-                 "read, grep, rag) o rellena 'answer' con el texto final.")
+def agent_decide(messages, args, used_tool, readonly=False):
+    """Pide una decisión máquina; promueve answer y reintenta si está vacío."""
+    decision, stats = agent_call(messages, args, readonly)
+    decision = agent_normalize_decision(decision, readonly)
+    if decision["op"] == "ANSWER" and not decision["answer"]["summary"]:
+        previa = agent_answer_from_history(messages)
+        if previa:
+            decision["answer"] = previa
+            if "MOVE:history" not in decision["trace"]:
+                decision["trace"].append("MOVE:history")
+    if decision["op"] == "ANSWER" and not decision["answer"]["summary"]:
+        nudge = json.dumps({
+            "err": "EMPTY_ANSWER",
+            "fix": ["op=ANSWER->answer.summary:string",
+                    "op=LIST|READ|GREP|RAG->tool_result"],
+            "trace": ["RETRY:EMPTY_ANSWER"],
+            "answer": {"summary": ""},
+        }, ensure_ascii=False, separators=(",", ":"))
         if not used_tool:
-            nudge += (" Tienes herramientas: usa list/read/grep para mirar los "
-                      "archivos antes de responder.")
-        decision, stats = agent_call(
+            nudge = nudge[:-1] + ',"hint":"tool_result_first"}'
+        decision2, stats = agent_call(
             messages + [
                 {"role": "assistant",
                  "content": json.dumps(decision, ensure_ascii=False)},
                 {"role": "user", "content": nudge},
-            ], args)
+            ], args, readonly)
+        decision = agent_normalize_decision(decision2, readonly)
+        if decision["op"] == "ANSWER" and not decision["answer"]["summary"]:
+            previa = agent_answer_from_history(messages)
+            if previa:
+                decision["answer"] = previa
     return decision, stats
 
 
 def agent_answer_direct(args, line, history):
-    """Último recurso: respuesta en texto plano con la evidencia ya reunida."""
-    evidence = ""
-    for item in reversed(history):
-        content = str(item.get("content") or "")
-        if item.get("role") == "user" and content.startswith("RESULTADO de "):
-            evidence = content
-            break
+    """Último recurso: JSON máquina con la evidencia ya reunida."""
+    op_evidence, evidence = agent_evidence(history)
     if args.model in AGENT_WEAK_MODELS:
         # Un 1B no resume de forma fiable: mostrar la evidencia es más honesto
         # que dejar que invente un análisis.
-        if evidence.startswith("RESULTADO de read:"):
+        if op_evidence == "READ" and evidence:
             lines = evidence.splitlines()
-            cabecera = lines[1].strip() if len(lines) > 1 else "(archivo)"
-            muestra = "\n".join(lines[2:5]).strip()
+            cabecera = lines[0].strip() if lines else "(archivo)"
+            muestra = "\n".join(lines[1:4]).strip()
             ruta = cabecera.split(":")[0] if ":" in cabecera else cabecera
             return (f"El modelo {args.model} no pudo resumir el código. "
                     f"Archivo leído: {cabecera}.\n{muestra}\n\n"
@@ -2588,14 +2779,16 @@ def agent_answer_direct(args, line, history):
                     f"ocli code explain {ruta} -m nemotron3:gpu")
         return (f"El modelo {args.model} no pudo devolver una respuesta válida. "
                 "Usa -m nemotron3:gpu o 'ocli code explain ARCHIVO'.")
-    prompt = (
-        "Responde en español, en texto plano y breve (máximo 120 palabras), "
-        "sin JSON, sin markdown y sin pedir más instrucciones. "
-        "Usa SOLO la información del resultado de herramientas que se muestra "
-        "abajo. Si no basta para analizar el código, dilo y propón una ruta "
-        f"concreta de la carpeta.\n\nPetición: {line}\n\n"
-        f"Resultado disponible:\n{evidence[:6000] or '(ninguno)'}"
-    )
+    prompt = json.dumps({
+        "kind": "answer.fallback",
+        "lang": "es",
+        "task": line,
+        "evidence": evidence[:6000],
+        "rules": ["evidence_only", "no_markdown", "no_ask_instructions",
+                  "max_words:120"],
+        "out": {"type": "object", "required": ["summary"],
+                "properties": {"summary": {"type": "string"}}},
+    }, ensure_ascii=False, separators=(",", ":"))
     payload = {
         "model": args.model,
         "stream": False,
@@ -2615,6 +2808,10 @@ def agent_answer_direct(args, line, history):
         return ""
     text = str(r.get("message", {}).get("content") or "").strip()
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    if text.startswith("{"):
+        answer = agent_answer_object(text)
+        if answer["summary"]:
+            return answer["summary"]
     return text.strip("`").strip()
 
 
@@ -2644,7 +2841,11 @@ def cmd_agent(args):
     undo = []
 
     single = bool(str(getattr(args, "prompt", "") or "").strip())
+    readonly = single and not args.yes
     print(f"AGENTE | modelo: {args.model} | proveedor: {PROVIDER} | raíz: {root}")
+    print("PROTOCOLO | JSON máquina: op/trace/args/answer")
+    if readonly:
+        print("TAREA DE SOLO LECTURA | herramientas: list, read, grep, rag")
     if args.model in AGENT_WEAK_MODELS:
         print(f"AVISO: {args.model} es pequeño para el bucle del agente; "
               f"prueba -m nemotron3:gpu o usa 'ocode explain|review ARCHIVO'.")
@@ -2725,12 +2926,12 @@ def cmd_agent(args):
             except SystemExit:
                 listing = ""
             if listing:
-                decision = {"thought": "Listo la carpeta antes de decidir.",
-                            "tool": "list", "args": {}}
+                decision = agent_machine_decision(
+                    "LIST", ["SCAN:root"])
                 history.append({"role": "assistant",
                                 "content": json.dumps(decision, ensure_ascii=False)})
                 history.append({"role": "user",
-                                "content": f"RESULTADO de list:\n{listing}"})
+                                "content": agent_tool_result("LIST", listing)})
                 used_tool = True
                 print("[list] inventario inicial", flush=True)
                 print(listing[:4000])
@@ -2743,21 +2944,22 @@ def cmd_agent(args):
                 except (SystemExit, ValueError):
                     contenido = ""
                 if contenido:
-                    decision = {"thought": "Leo el archivo de código probable.",
-                                "tool": "read",
-                                "args": {"path": str(picked.relative_to(root))}}
+                    decision = agent_machine_decision(
+                        "READ", ["PICK:" + picked.name],
+                        {"path": str(picked.relative_to(root))})
                     history.append({"role": "assistant",
                                     "content": json.dumps(decision, ensure_ascii=False)})
                     history.append({"role": "user",
-                                    "content": f"RESULTADO de read:\n{contenido[:6000]}"})
+                                    "content": agent_tool_result("READ", contenido)})
                     used_tool = True
                     print(f"[read] archivo seleccionado: {picked.relative_to(root)}",
                           flush=True)
         last_action = None
         for _ in range(max(1, args.steps)):
-            messages = [{"role": "system", "content": agent_system(root)}] + history
+            messages = [{"role": "system",
+                         "content": agent_system(root, readonly)}] + history
             try:
-                decision, stats = agent_decide(messages, args, used_tool)
+                decision, stats = agent_decide(messages, args, used_tool, readonly)
             except SystemExit as exc:
                 print(f"(el agente no devolvió una decisión válida: {exc})")
                 print("(prueba '-m nemotron3:gpu', sube --max-tokens o "
@@ -2771,15 +2973,15 @@ def cmd_agent(args):
                         history.append({"role": "assistant", "content": directo})
                         answered = True
                 break
-            tool = decision.get("tool")
-            answer = str(decision.get("answer") or "").strip()
-            thought = decision.get("thought")
-            print("RAZONAMIENTO AGENTE: " +
-                  (str(thought).strip() if thought else "(sin texto de decisión)"))
-            if tool == "answer":
-                if answer:
-                    print(answer)
-                    history.append({"role": "assistant", "content": answer})
+            op = decision["op"]
+            tool = OP_TO_TOOL[op]
+            answer = decision["answer"]
+            print("RAZONAMIENTO AGENTE: " + agent_trace_text(decision))
+            if op == "ANSWER":
+                if answer["summary"]:
+                    text = agent_answer_text(decision)
+                    print(text)
+                    history.append({"role": "assistant", "content": text})
                     answered = True
                 else:
                     print("(el modelo no devolvió respuesta. Prueba con "
@@ -2796,15 +2998,18 @@ def cmd_agent(args):
             last_action = action
             print(f"[{tool}]", flush=True)
             try:
-                tool_args = agent_normalize(root, tool, decision.get("args", {}),
-                                            line)
-                result = agent_run_tool(tool, tool_args, args, root, undo)
+                tool_args = agent_normalize(root, tool, decision["args"], line)
+                result = agent_run_tool(tool, tool_args, args, root, undo,
+                                        readonly)
+                ok = True
             except SystemExit as exc:
                 result = f"ERROR: {exc}"
+                ok = False
             print(result[:4000])
             history.append({"role": "assistant",
                             "content": json.dumps(decision, ensure_ascii=False)})
-            history.append({"role": "user", "content": f"RESULTADO de {tool}:\n{result[:6000]}"})
+            history.append({"role": "user",
+                            "content": agent_tool_result(op, result, ok)})
         else:
             print(f"Se alcanzó el límite de {args.steps} pasos. Reformula o usa /clear.")
         if single and not answered:
@@ -3385,7 +3590,7 @@ def build_parser():
     ag.add_argument("--history", type=int, default=20, help="mensajes conservados en memoria")
     ag.add_argument("--ctx", type=int, default=2048)
     ag.add_argument("--max-tokens", type=int, default=512 if TASK_MODE else 768,
-                    help="el JSON del agente necesita espacio para thought+answer")
+                    help="el JSON máquina del agente necesita espacio para trace+answer")
     ag.add_argument("-t", "--temperature", type=float, default=0.0 if TASK_MODE else 0.2)
     ag.add_argument("--reasoning", action="store_true",
                     help="usar el modelo de respaldo nemotron3:gpu")

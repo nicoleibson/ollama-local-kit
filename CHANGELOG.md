@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-11-23 (trigésima novena tanda)
+
+- **Modo máquina del agente:** el prompt del sistema pasa a ser una
+  especificación JSON (`kind: agent.machine`, `io`, `fields`, `rules`), sin
+  instrucciones en prosa. La salida permitida es un único JSON con
+  `op` (`ANSWER`/`READ`/`LIST`/`GREP`/`RAG` en tareas únicas), `trace` (1-4
+  códigos `CODE[:valor]`), `args` y `answer` como objeto
+  `{status, summary, facts[], files[]}`.
+- `agent_normalize_decision()` acepta el formato legacy (`tool`, `thought`,
+  `answer` como texto) y lo convierte al protocolo nuevo. Si la respuesta estaba
+  dentro de `trace`/`thought`, se promueve a `answer.summary` y se añade el
+  código `MOVE:answer`: corrige los casos de `answer` vacío con la respuesta
+  escrita en `RAZONAMIENTO`.
+- La traza nunca queda vacía: se genera `AUTO:<OP>` cuando el modelo la omite y
+  se mantiene el fallback `(el modelo no devolvió texto de razonamiento)`.
+- `op=ANSWER` sin `summary` reintenta con un mensaje JSON `EMPTY_ANSWER`,
+  recupera respuestas previas del historial (`MOVE:history`) y, si aún falla,
+  usa el fallback determinista. El view de `RAZONAMIENTO AGENTE:` muestra los
+  códigos y el `answer` estructurado se imprime con resumen, hechos y archivos.
+- Los resultados de herramientas viajan en el historial como JSON
+  (`kind: tool_result`), también en modo máquina.
+- Manual y README documentan el protocolo y la tabla de códigos; `test-agent.py`
+  añade cobertura de prompt JSON, normalización legacy, promoción de respuesta,
+  traza vacía y salida estructurada de extremo a extremo.
+
+## 2026-11-23 (trigésima octava tanda)
+
+- Las tareas únicas del agente (`--prompt`, incluida la GUI) son de **solo
+  lectura**: el esquema y el prompt solo ofrecen `answer`, `read`, `list`, `grep`
+  y `rag`. Antes el modelo proponía `bash` repetidamente y se cancelaba por no
+  haber terminal para confirmar. El REPL interactivo conserva todas las
+  herramientas con confirmación.
+- Prueba añadida en `test-agent.py` para el esquema restringido.
+
 ## 2026-11-23 (trigésima séptima tanda)
 
 - **Causa del fallo reproducido:** sesión `CursosIA` con 12 mensajes

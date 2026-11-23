@@ -308,8 +308,13 @@ REPL; es lo que hace la pestaña Agente de `ogui`. Mantiene sesión y permite
 `/undo` de los cambios. Las operaciones de lectura son automáticas; escribir,
 editar o ejecutar comandos piden confirmación, y las rutas quedan confinadas a
 `--root`. Al salir imprime el comando para reabrir esa sesión con su `--root`.
-Toda decisión se imprime como `RAZONAMIENTO AGENTE:`. Ver manual, secciones 9,
-10 y 18.
+Toda decisión se imprime como `RAZONAMIENTO AGENTE:` con el protocolo **JSON
+máquina**: el prompt del sistema es una especificación JSON (sin prosa) y el
+modelo solo emite `{"op":"...","trace":["CODE:valor"],"args":{},"answer":{
+"status":"ok","summary":"...","facts":[],"files":[]}}`. `trace` lleva códigos
+(`SCAN`, `PICK`, `READ`, `ANSWER`, `MOVE`, `AUTO`...), nunca la respuesta en
+prosa; si el modelo la escribe ahí, la CLI la promueve a `answer.summary`. Ver
+manual, secciones 9, 10 y 18.
 
 ## Seguridad
 

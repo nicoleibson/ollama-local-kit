@@ -746,20 +746,52 @@ oagent -m nemotron3:gpu --steps 6              # recomendado para el bucle
 ogemini agent --root ~/ollama-local-kit        # Gemini también admite schema
 ```
 
-El bucle funciona así: escribes una petición, el modelo devuelve un JSON con
-`thought`, `tool`, `args` y, si ya puede responder, `answer`. La CLI ejecuta la
-herramienta, añade el resultado al historial y vuelve a llamar al modelo hasta
-que el modelo devuelve `answer` o se alcanza `--steps` (4 por defecto en perfil
+El bucle funciona así: escribes una petición, el modelo devuelve **solo un
+objeto JSON máquina** con `op`, `trace`, `args` y `answer`. La CLI ejecuta la
+operación, añade el resultado al historial como JSON y vuelve a llamar al modelo
+hasta que devuelve `op=ANSWER` o se alcanza `--steps` (4 por defecto en perfil
 tareas, 8 con `--reasoning`). Cada decisión se imprime como
-`RAZONAMIENTO AGENTE:`; con `--prompt` se ejecuta una sola petición y se sale sin
-REPL. La pestaña Agente de `ogui` usa esta modalidad y nunca pasa `--yes` ni
-`--allow-dangerous`.
+`RAZONAMIENTO AGENTE:` con los códigos de la traza; con `--prompt` se ejecuta una
+sola petición y se sale sin REPL. La pestaña Agente de `ogui` usa esta modalidad
+y nunca pasa `--yes` ni `--allow-dangerous`.
+
+**Protocolo máquina (JSON estricto):** el `system prompt` ya no es prosa: es una
+especificación JSON con `io`, `root`, `fields`, `ops` y `rules`. El modelo solo
+debe emitir un objeto como este:
+
+```json
+{"op":"ANSWER","trace":["SCAN:root","PICK:cursos.html","ANSWER:ok"],
+ "args":{},"answer":{"status":"ok","summary":"El HTML lista 4 niveles.",
+ "facts":["Incluye precios y temario"],"files":["cursos.html"]}}
+```
+
+| Campo | Formato | Uso |
+|---|---|---|
+| `op` | `ANSWER`, `READ`, `LIST`, `GREP`, `RAG` (y `WRITE`, `EDIT`, `BASH` en el REPL) | operación a ejecutar |
+| `trace` | array de 1-4 códigos `CODE` o `CODE:valor` | razonamiento visible, nunca prosa |
+| `args` | objeto | argumentos de la operación; vacío para `ANSWER` |
+| `answer` | `{status, summary, facts[], files[]}` | respuesta estructurada; `summary` obligatorio con `op=ANSWER` |
+
+Códigos de traza: `SCAN` (inventario), `PICK` (archivo elegido), `READ`, `LIST`,
+`GREP`, `RAG`, `ANSWER`, `RETRY` (reintento por respuesta vacía), `MOVE`
+(texto rescatado del razonamiento), `ERR` (formato inválido) y `AUTO` (traza
+generada por la CLI). La traza nunca se muestra vacía: si el modelo la omite se
+emite `AUTO:<OP>` y, si no hay texto de razonamiento, la GUI/CLI imprimen
+`(el modelo no devolvió texto de razonamiento)`.
+
+Normalización: la CLI acepta también la forma antigua (`tool`, `thought`,
+`answer` como texto) y la convierte al protocolo nuevo. Si el modelo escribe la
+respuesta dentro de `trace`/`thought`, se promueve a `answer.summary` y se añade
+el código `MOVE:answer`. Con `op=ANSWER` y `answer` vacío se reintenta con un
+mensaje JSON `{"err":"EMPTY_ANSWER","fix":[...]}`; si vuelve a fallar, se usa una
+respuesta previa del historial o el fallback visible, pero nunca se imprime una
+respuesta vacía.
 
 **Modelo recomendado:** `nemotron3:gpu`. Los modelos de 1B (`gemma3:q4`,
 `gemma3:1b`, `lfm25:350m`, `bonsai:q1`, `qwen3:06b`) fallan a menudo el JSON del
 bucle: la CLI avisa al arrancar y, si no hay decisión válida, lo dice en vez de
 terminar en silencio. En el agente el pensamiento del modelo va desactivado
-(`think:false`): el razonamiento visible es el campo `thought` de cada decisión,
+(`think:false`): el razonamiento visible es el campo `trace` de cada decisión,
 y así el presupuesto `--max-tokens` (512) se dedica al JSON completo.
 
 **Arranque con inventario:** si la petición habla de analizar, revisar, leer o
@@ -782,6 +814,12 @@ la evidencia leída y sugiere `ocli code explain ARCHIVO -m nemotron3:gpu`.
 **Sesiones:** al reanudar una sesión se descartan mensajes vacíos y `continua`
 repetidos de intentos anteriores; la CLI indica cuántos se quitaron y recuerda
 `--new-session` para empezar de cero.
+
+**Tareas únicas, solo lectura:** con `--prompt` (lo que usa la GUI) el esquema
+solo ofrece `answer`, `read`, `list`, `grep` y `rag`. No se pueden proponer
+`bash`, `write` ni `edit`, porque desde la GUI no hay terminal para confirmarlos
+y antes el modelo proponía `bash` una y otra vez, cancelado siempre. En el REPL
+interactivo siguen disponibles todas las herramientas con confirmación.
 
 En la pestaña Agente de `ogui` el subprocess tiene un límite de 900 s (el resto
 de tareas usa 300 s): una tarea de análisis con `nemotron3:gpu` tarda 3-4 min y
@@ -1215,6 +1253,8 @@ como experimento documentado, no como modelo de uso diario.
 | El agente repite la misma herramienta | Se detiene solo; reformula con una ruta o pregunta más concreta, o sube `--steps` |
 | El agente pide las instrucciones en JSON o contesta con el esquema | Modelo de 1B (`gemma3:latest`, `gemma3:gpu`, `qwen3:06b`…): usa `nemotron3:gpu`; en `ogui` esos modelos ya no se ofrecen en Agente |
 | La sesión del agente crece con `continua` y respuestas vacías | Se limpian al cargar; usa `--new-session` o deja el campo Sesión vacío |
+| El agente deja `answer` vacío o escribe la respuesta en `RAZONAMIENTO` | El protocolo máquina promueve ese texto a `answer.summary` (código `MOVE:answer`) y reintenta con `EMPTY_ANSWER`; usa `nemotron3:gpu` si se repite |
+| El razonamiento del agente sale vacío | La CLI genera `AUTO:<OP>`; no es un fallo del modelo, es la traza mínima obligatoria |
 | Gemma4 devuelve `response` vacío | Está gastando los tokens en `<think>`; la CLI y `odgpu` envían `think:false` |
 | El enrutador `run` elige mal | Usar `orun --intent act\|rag\|chat ...` o revisar con `--dry-run` |
 | El chat con `--session` olvida cosas | El historial supera `num_ctx=2048`; usa `--new-session` o conversaciones más cortas |
@@ -1412,7 +1452,8 @@ Toda respuesta de `chat`, `act`, `run`, RAG, agente y flujos empieza por un bloq
 `RAZONAMIENTO:`. En streaming, el texto `thinking` se imprime en cuanto llega y
 después aparece `RESPUESTA:`; si el modelo no devuelve texto de razonamiento, se
 escribe `(el modelo no devolvió texto de razonamiento)`. En el agente, la decisión
-se muestra como `RAZONAMIENTO AGENTE:`, aunque el campo `thought` esté vacío.
+se muestra como `RAZONAMIENTO AGENTE:` con los códigos de `trace`; si la
+traza llegara vacía se genera `AUTO:<OP>` o el texto de fallback.
 
 `think` **no se envía a ciegas**. `gemma3:gpu` declara solo la capacidad
 `completion` y responde `HTTP 400: "gemma3:gpu" does not support thinking` si se

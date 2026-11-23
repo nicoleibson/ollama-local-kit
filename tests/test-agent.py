@@ -109,15 +109,15 @@ m2.api = lambda path, payload=None, **kw: {
 }
 loose = m.build_parser().parse_args(["agent", "--no-schema"])
 decision, _ = m2.agent_call([], loose)
-assert decision["answer"] == "ok", decision
+assert decision["answer"]["summary"] == "ok", decision
 for key in ("OLLAMA_KIT_PROVIDER", "NVIDIA_API_KEY"):
     os.environ.pop(key, None)
 
 # Respuesta vacía: reintenta una vez y, si sigue vacía, lo dice en claro.
 empty_then_ok = iter([
-    {"thought": "sin texto", "tool": "answer", "args": {}},
-    {"thought": "ya", "tool": "answer", "args": {},
-     "answer": "El HTML lista cursos."},
+    {"op": "ANSWER", "trace": ["ANSWER:pending"], "args": {}},
+    {"op": "ANSWER", "trace": ["ANSWER:ok"], "args": {},
+     "answer": {"summary": "El HTML lista cursos."}},
 ])
 m.api = lambda path, payload=None, **kw: {
     "message": {"content": json.dumps(next(empty_then_ok))}, "eval_count": 1}
@@ -128,7 +128,8 @@ with contextlib.redirect_stdout(out):
     m.cmd_agent(one)
 assert "El HTML lista cursos." in out.getvalue(), out.getvalue()
 
-both_empty = iter([{"thought": "vacío", "tool": "answer", "args": {}}] * 2
+both_empty = iter([{"op": "ANSWER", "trace": ["ANSWER:pending"],
+                    "args": {}}] * 2
                   + [{"answer": "sin respuesta directa"}])
 m.api = lambda path, payload=None, **kw: {
     "message": {"content": json.dumps(next(both_empty))}, "eval_count": 1}
@@ -248,6 +249,18 @@ with contextlib.redirect_stdout(out):
     m.cmd_agent(weak_latest)
 assert "AVISO: gemma3:latest" in out.getvalue(), out.getvalue()
 
+# En tareas únicas solo existen herramientas de lectura: ni bash ni escrituras.
+assert m3.agent_schema(True)["properties"]["op"]["enum"] == list(m3.READONLY_OPS)
+spec = json.loads(m3.agent_system(root, True))
+assert spec["kind"] == "agent.machine" and spec["io"]["prose"] is False
+assert spec["fields"]["op"]["values"] == list(m3.READONLY_OPS)
+try:
+    m3.agent_run_tool("bash", {"command": "date"}, None, root, [], True)
+except SystemExit as exc:
+    assert "solo lectura" in str(exc), exc
+else:
+    raise AssertionError("bash no debe estar disponible en tarea única")
+
 # Con un modelo pequeño el fallback no inventa un análisis: muestra evidencia.
 m.api = lambda path, payload=None, **kw: {
     "message": {"content": "no es json"}, "eval_count": 1}
@@ -260,5 +273,50 @@ with contextlib.redirect_stdout(out):
 texto = out.getvalue()
 assert "gemma3:latest no pudo" in texto, texto
 assert "nemotron3:gpu" in texto, texto
+
+# Modo máquina: instrucciones y esquema 100% JSON, sin prosa.
+full_spec = json.loads(m3.agent_system(root, False))
+assert full_spec["kind"] == "agent.machine"
+assert full_spec["io"]["out"] == "json:object"
+assert full_spec["fields"]["op"]["values"] == list(m3.AGENT_OPS)
+assert m3.agent_schema(False)["properties"]["op"]["enum"] == list(m3.AGENT_OPS)
+assert m3.agent_schema(False)["required"] == ["op", "trace", "args"]
+assert "answer" in m3.agent_schema(False)["properties"]
+
+# La respuesta escrita dentro del razonamiento se promueve a answer.summary.
+promoted = m3.agent_normalize_decision(
+    {"thought": "El HTML lista cursos", "tool": "answer", "args": {}})
+assert promoted["op"] == "ANSWER"
+assert promoted["answer"]["summary"] == "El HTML lista cursos", promoted
+assert "MOVE:answer" in promoted["trace"], promoted
+assert m3.agent_normalize_decision(
+    {"op": "ANSWER", "trace": [], "args": {}})["trace"] == ["AUTO:ANSWER"]
+legacy_text = m3.agent_normalize_decision(
+    {"op": "read", "trace": ["READ:nota.txt"], "args": {}, "answer": "texto"})
+assert legacy_text["answer"]["summary"] == "texto"
+expect_exit(lambda: m3.agent_normalize_decision(
+    {"op": "BASH", "trace": ["BASH:x"], "args": {}}, True), "ERR:OP_READONLY")
+
+# La traza jamás sale vacía y se muestra como códigos.
+assert m3.agent_trace_text({"trace": []}) == "(el modelo no devolvió texto de razonamiento)"
+assert m3.agent_trace_text({"trace": ["SCAN:root", "ANSWER:ok"]}) == "SCAN:root | ANSWER:ok"
+
+# Extremo a extremo: decisión máquina con answer estructurado.
+machine = {"op": "ANSWER", "trace": ["SCAN:root", "ANSWER:ok"], "args": {},
+           "answer": {"status": "ok", "summary": "Análisis estructurado",
+                      "facts": ["punto relevante"], "files": ["nota.txt"]}}
+m.api = lambda path, payload=None, **kw: {
+    "message": {"content": json.dumps(machine)}, "eval_count": 1}
+machine_args = m.build_parser().parse_args(
+    ["agent", "--root", str(root), "--prompt", "di OK", "--steps", "1"])
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    m.cmd_agent(machine_args)
+machine_text = out.getvalue()
+assert "PROTOCOLO | JSON máquina" in machine_text, machine_text
+assert "RAZONAMIENTO AGENTE: SCAN:root | ANSWER:ok" in machine_text, machine_text
+assert "Análisis estructurado" in machine_text, machine_text
+assert "- punto relevante" in machine_text, machine_text
+assert "Archivos: nota.txt" in machine_text, machine_text
 
 print("Herramientas y salvaguardas: TODO OK")

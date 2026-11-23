@@ -86,7 +86,7 @@ assert "no se guardó" in out, out
 print("OK aviso cuando no hay sesión")
 
 # --- agente ----------------------------------------------------------------
-m.agent_call = lambda messages, args: ({"tool": "answer", "answer": "listo"}, {})
+m.agent_call = lambda messages, args, readonly=False: ({"tool": "answer", "answer": "listo"}, {})
 lines = iter(["hola", "/exit"])
 args = m.build_parser().parse_args(["agent", "--root", str(root),
                                     "--session", "trabajo", "--steps", "1"])
