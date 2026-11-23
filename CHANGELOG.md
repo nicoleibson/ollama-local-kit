@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-23 (trigésima tanda)
+
+- Corregidas las referencias que aún atribuían RAG a `nemotron3:gpu`: la tabla de
+  «mejor forma de usar cada modelo», la sección de funcionamiento de RAG y la
+  tabla de modelos por tarea. El default del perfil tareas es `gemma3:gpu`;
+  `nemotron3:gpu` se usa con `--reasoning` (o `OLLAMA_KIT_TASK_MODE=0`) y
+  `qwen3:06b` queda como opción rápida con `-m`. README, manual y copia
+  instalada sincronizados.
+
 ## 2026-11-23 (vigésima novena tanda)
 
 - `ocli doctor` sin incidencias (servicio activo, iGPU Carrizo, sin nube,

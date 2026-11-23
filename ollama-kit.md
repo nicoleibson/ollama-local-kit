@@ -150,7 +150,7 @@ El índice estaba desactualizado (19:47 del 22/11 frente a documentos editados a
 las 23:49), así que se reconstruyó con `qwen:gpu`, chunk 900 y solape 150:
 **697 fragmentos en 52 archivos**. La copia anterior quedó en
 `/tmp/opencode/index-before-reindex.json`. Tras incorporar los resultados de esta
-sección se reindexó de nuevo a las 01:45: **716 fragmentos en 52 archivos**, con
+sección se reindexó de nuevo a las 01:45: **más de 700 fragmentos en 52 archivos**, con
 copia previa en `/tmp/opencode/index-before-final-reindex.json`. Con el índice
 fresco se preguntó lo
 mismo a `gemma3:gpu` y `qwen3:06b` (`-k 4 --ctx 2048 --max-tokens 300`):
@@ -303,7 +303,7 @@ offloaded 27/27 layers to GPU
 | Máxima precisión (sin importar velocidad) | `nemotron3:precise` | `--precise`: temp 0, ctx 8192, 1024 tokens, ~3 tok/s |
 | Ejecutar acciones en terminal | `ocli act` / `ocli act --free` | JSON forzado, catálogo editable |
 | Vectores para RAG | `qwen:gpu` | Solo `/api/embed`; `qwen-embed:q8` quedó opcional, no importado |
-| Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; los Gemma 1B copian fragmentos |
+| Responder sobre archivos (RAG) | `gemma3:gpu` | Default del perfil tareas; cita fuentes. Con `--reasoning` pasa a `nemotron3:gpu` |
 | RAG rápida (opcional) | `qwen3:06b` | `orag ask -m qwen3:06b`, ~3× más rápido; requiere contexto recuperado |
 | Probar Gemma 4 en la R7 260X | `odgpu` → `gemma4:dgpu` | 8,5 tok/s, instancia aislada; no cambia el default |
 | Probar Gemma 4 en CPU | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
@@ -501,9 +501,9 @@ hay que actualizar también `-m/--model` de `embed`, el default de `rag index` y
    mejores como contexto y el modelo chat sintetiza la respuesta citando `[1]`, `[2]`...
 
 **Modelos:** el embedding siempre es `qwen:gpu` (solo `/api/embed`). Para redactar,
-el predeterminado es `nemotron3:gpu`: con los Gemma 1B (`gemma3:q4` y `:gpu`)
-tiende a copiar
-los fragmentos en vez de resumirlos. Como `OLLAMA_MAX_LOADED_MODELS=1`, al pasar de
+el predeterminado del perfil tareas es `gemma3:gpu`; con `--reasoning` pasa a
+`nemotron3:gpu`, que sintetiza mejor fragmentos largos. `qwen3:06b` es una opción
+de RAG rápida con contexto (`-m qwen3:06b`). Como `OLLAMA_MAX_LOADED_MODELS=1`, al pasar de
 embeddings a chat Ollama descarga `qwen:gpu` y carga el modelo chat; eso añade un
 par de segundos por consulta y es normal ver `ollama ps` con un solo modelo.
 
@@ -634,7 +634,7 @@ anteriores corresponden a sus configuraciones respectivas.
 | Iterar, explicar errores y generar tests | `gemma3:gpu` | Q6_K, más exacto, 7,8 tok/s |
 | Revisar código, arquitectura, diffs | `nemotron3:gpu` | razona mejor |
 | Código extenso o respuesta larga | `odgpu` → `gemma4:dgpu` | 8,5 tok/s en dGPU aislada |
-| Buscar en tu propio código | `qwen:gpu` + `nemotron3:gpu` | embeddings + RAG |
+| Buscar en tu propio código | `qwen:gpu` + `gemma3:gpu` | embeddings + RAG (`nemotron3:gpu` con `--reasoning`) |
 
 ### `code`: revisar, testear, explicar y commitear
 
