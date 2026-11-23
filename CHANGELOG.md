@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-23 (vigésima novena tanda)
+
+- `ocli doctor` sin incidencias (servicio activo, iGPU Carrizo, sin nube,
+  gobernador `performance`). Aviso esperado: ningún modelo cargado al medir.
+- **Índice RAG final reindexado** con la documentación definitiva: 716 fragmentos
+  en 52 archivos. Copia del índice anterior en
+  `/tmp/opencode/index-before-final-reindex.json`.
+- Prueba de humo sobre los resultados nuevos: `gemma3:gpu` respondió 17/20 de forma
+  concisa y con tres citas correctas; `qwen3:06b` mezcló el resultado antiguo de
+  6 preguntas con el nuevo de 20. Refuerza mantener `gemma3:gpu` como default.
+  Sin APIs externas ni créditos.
+
 ## 2026-11-23 (vigésima octava tanda)
 
 - Integración GUI/CLI tras el cambio de timeout: `gui_timeout()` eleva de 300 a

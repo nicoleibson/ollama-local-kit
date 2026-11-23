@@ -149,7 +149,10 @@ los pesos «Heretic» de `gemma3:q4`.
 El índice estaba desactualizado (19:47 del 22/11 frente a documentos editados a
 las 23:49), así que se reconstruyó con `qwen:gpu`, chunk 900 y solape 150:
 **697 fragmentos en 52 archivos**. La copia anterior quedó en
-`/tmp/opencode/index-before-reindex.json`. Con el índice fresco se preguntó lo
+`/tmp/opencode/index-before-reindex.json`. Tras incorporar los resultados de esta
+sección se reindexó de nuevo a las 01:45: **716 fragmentos en 52 archivos**, con
+copia previa en `/tmp/opencode/index-before-final-reindex.json`. Con el índice
+fresco se preguntó lo
 mismo a `gemma3:gpu` y `qwen3:06b` (`-k 4 --ctx 2048 --max-tokens 300`):
 
 | Pregunta | `gemma3:gpu` | `qwen3:06b` |

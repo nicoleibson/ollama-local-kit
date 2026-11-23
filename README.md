@@ -63,7 +63,8 @@ razonamiento y cortar la respuesta; para preguntas cortas funciona mejor
 Sonda factual ampliada (20 preguntas, JSON válido en las 100 respuestas):
 `gemma3:gpu` 17/20, `gemma3:q4` 16/20, `bonsai:q1` 14/20, `lfm25:350m` 12/20 y
 `qwen3:06b` 10/20. Qwen3 conviene usarlo siempre con contexto recuperado, nunca
-como fuente de conocimiento libre.
+como fuente de conocimiento libre. Índice RAG final: 716 fragmentos en 52
+archivos, reconstruido con la documentación definitiva.
 
 Qwen3.5-4B se importó y se probó como reemplazo de `qwen:gpu`, pero **no se adoptó**
 para RAG: es ~5x más lento y menos preciso (4/6 vs 5/6 en recuperación). Se conserva
