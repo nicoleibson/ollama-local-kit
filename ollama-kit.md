@@ -537,7 +537,8 @@ Este índice es global: si trabajas con varios proyectos, conviene usar `oflow`
 
 ### Enrutador automático
 
-Una sola entrada para todo. Clasifica la intención con `nemotron3:gpu` y delega:
+Una sola entrada para todo. Clasifica la intención con el modelo del perfil
+(`gemma3:gpu`; `nemotron3:gpu` con `--reasoning`) y delega:
 
 ```bash
 orun "muestra la fecha"                              # -> act

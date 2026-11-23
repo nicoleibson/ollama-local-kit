@@ -10,6 +10,8 @@
   y 300 tokens. Verificado con `¿Qué hace odgpu --safe-fit?`: respuesta correcta
   con 97 tokens en 5,2 s. Aserciones nuevas en `tests/test-precision.py`;
   10/10 pruebas.
+- Corregida la nota del enrutador: en perfil tareas clasifica con `gemma3:gpu`;
+  `nemotron3:gpu` solo con `--reasoning`.
 
 ## 2026-11-23 (trigésima tanda)
 
