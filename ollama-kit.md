@@ -1231,7 +1231,12 @@ Seguridad de la ventana:
 - La casilla global **Máxima precisión** fija `OLLAMA_KIT_PRECISE=1` para todos
   los subprocess; alcanza a las doce pestañas sin tocar cada comando. La
   cabecera y el estado muestran «perfil preciso» o «perfil tareas». No relaja la
-  lista blanca ni las confirmaciones.
+  lista blanca ni las confirmaciones. Con perfil preciso el timeout de los
+  subprocess de la GUI sube de 300 a 900 s (`gui_timeout()`), para que no corte
+  las inferencias largas. El inventario de `ocli list`, que alimenta los
+  desplegables, ya describe los tags nuevos (`bonsai:q1`, `gemma3:1b`,
+  `lfm25:350m`, `qwen3:06b`), `nemotron3:precise`, `gemma4:dgpu-safe` y los seis
+  tags `ctx4k`/`ctx8k` conservados.
 - La pestaña Comandos solo muestra una lista blanca de entradas de solo lectura.
   Quedan fuera benchmarks con inferencia, reindexado RAG, `review`, borrados,
   `stop` y copias de seguridad.

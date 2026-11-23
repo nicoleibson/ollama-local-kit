@@ -396,6 +396,18 @@ INFO = {
     "qwen35:embed": ("Qwen3.5 4B + pooling_type", "embedding", "alternativa RAG, 2560 dim"),
     "gemma4:cpu": ("Gemma 4 E4B Q2_K", "2,5 tok/s", "CPU: no cabe en la iGPU"),
     "gemma4:dgpu": ("Gemma 4 E4B en R7 260X", "8,5 tok/s", "solo con odgpu (puerto 11435)"),
+    "gemma4:dgpu-safe": ("Gemma 4 E4B safe-fit", "2,6 tok/s", "odgpu --safe-fit, ctx 8192"),
+    "nemotron3:precise": ("Nemotron-H 4B precise", "3,4 tok/s", "--precise: temp 0, ctx 8192"),
+    "bonsai:q1": ("Qwen3 1.7B Q1_0", "25,1 tok/s", "experimento 1 bit; no default"),
+    "gemma3:1b": ("Gemma 3 1B-it Q4_K_M", "9,1 tok/s", "stock, alternativa a gemma3:q4"),
+    "lfm25:350m": ("LFM2.5 350M Q4_K_M", "43,3 tok/s", "clasificar/enrutar; no responder"),
+    "qwen3:06b": ("Qwen3 0.6B Q4_K_M", "25,2 tok/s", "chat/JSON/RAG rápida, think:false"),
+    "gemma3:ctx4k": ("Gemma 3 1B Q6_K", "ver :gpu", "variante ctx 4096 conservada"),
+    "gemma3:ctx8k": ("Gemma 3 1B Q6_K", "ver :gpu", "variante ctx 8192 conservada"),
+    "nemotron3:ctx4k": ("Nemotron-H 4B IQ2_M", "ver :gpu", "variante ctx 4096 conservada"),
+    "nemotron3:ctx8k": ("Nemotron-H 4B IQ2_M", "ver :gpu", "variante ctx 8192 conservada"),
+    "gemma4:ctx4k": ("Gemma 4 E4B Q2_K", "ver :cpu", "variante ctx 4096 conservada"),
+    "gemma4:ctx8k": ("Gemma 4 E4B Q2_K", "ver :cpu", "variante ctx 8192 conservada"),
 }
 
 DEFAULT_CATALOG = {

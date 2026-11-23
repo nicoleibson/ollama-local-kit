@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-23 (vigésima octava tanda)
+
+- Integración GUI/CLI tras el cambio de timeout: `gui_timeout()` eleva de 300 a
+  900 s el límite de los subprocess cuando está activa la casilla global
+  **Máxima precisión**, en las seis llamadas que podían cortar inferencias
+  largas. Aserciones en `tests/test-gui.py`.
+- `ocli list` describe ya los tags nuevos, `nemotron3:precise`,
+  `gemma4:dgpu-safe` y los seis tags `ctx4k`/`ctx8k` conservados, en lugar de
+  mostrarlos como `(otro)`. Como esta tabla alimenta los desplegables de la GUI,
+  todos los modelos aparecen ahora con su uso. Aserciones en
+  `tests/test-task.py`.
+
 ## 2026-11-23 (vigésima séptima tanda)
 
 - **Sonda factual ampliada**: 20 preguntas × 5 modelos con salida JSON. Resultados:

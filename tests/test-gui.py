@@ -304,11 +304,13 @@ with patch.object(mod, "cli_text", fake_cli), \
     app.toggle_precise()
     assert mod.PRECISE_MODE is True
     assert mod.local_env()["OLLAMA_KIT_PRECISE"] == "1"
+    assert mod.gui_timeout() == 900
     assert "perfil preciso" in app.status_var.get()
     assert "perfil preciso" in app.profile_var.get()
     app.precise_var.set(False)
     app.toggle_precise()
     assert "OLLAMA_KIT_PRECISE" not in mod.local_env()
+    assert mod.gui_timeout() == 300
     assert "perfil tareas" in app.status_var.get()
 
     app.destroy()

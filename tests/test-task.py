@@ -156,4 +156,13 @@ with contextlib.redirect_stdout(out5):
 assert "PERFIL: TAREAS" in out5.getvalue(), out5.getvalue()
 assert "RAZONAMIENTO: siempre visible" in out5.getvalue(), out5.getvalue()
 print("CONFIG: OK")
+
+# El inventario de `ocli list` (que alimenta los desplegables de la GUI) conoce
+# los tags nuevos y el perfil preciso.
+for tag in ("bonsai:q1", "gemma3:1b", "lfm25:350m", "qwen3:06b",
+            "nemotron3:precise", "gemma4:dgpu-safe",
+            "gemma3:ctx4k", "gemma3:ctx8k", "nemotron3:ctx4k",
+            "nemotron3:ctx8k", "gemma4:ctx4k", "gemma4:ctx8k"):
+    assert tag in mod.INFO and mod.INFO[tag][0] != "(otro)", tag
+print("INVENTARIO MODELOS: OK")
 print("PERFIL TAREAS: TODO OK")

@@ -81,6 +81,11 @@ def local_env(extra: dict | None = None) -> dict:
     return env
 
 
+def gui_timeout() -> int:
+    """El perfil preciso puede tardar más de 300 s en un solo subprocess."""
+    return 900 if PRECISE_MODE else 300
+
+
 def build_cli_argv(*args: object) -> list[str]:
     """Argumentos para ejecutar la CLI con el mismo intérprete que la GUI."""
     return [sys.executable, str(CLI_PATH)] + [str(a) for a in args]
@@ -722,7 +727,7 @@ class ChatTab(BaseTab):
         self.prompt.delete("1.0", "end")
         self.output.write(f"tú> {text}\n", heading=f"{model} · {pretty_command(cmd[:-1])} …")
         self.app.worker.submit("Chat local\n" + shown,
-                               lambda: run_process_text(cmd, timeout=300),
+                               lambda: run_process_text(cmd, timeout=gui_timeout()),
                                self.output,
                                after=self._after_chat)
 
@@ -1158,7 +1163,7 @@ class RAGTab(BaseTab):
             float(self.min_var.get() or 0), int(self.ctx_var.get() or 3600),
         )
         self.app.worker.submit("Pregunta RAG\n" + pretty_command(argv),
-                               lambda: run_process_text(argv, timeout=300),
+                               lambda: run_process_text(argv, timeout=gui_timeout()),
                                self.output)
 
     def index(self) -> None:
@@ -1371,7 +1376,7 @@ class AccionesTab(BaseTab):
                                    parent=self.app):
             return
         self.app.worker.submit("Enrutador " + intent + "\n" + shown,
-                               lambda: run_process_text(argv, timeout=300), self.output)
+                               lambda: run_process_text(argv, timeout=gui_timeout()), self.output)
 
     def code_pick(self) -> None:
         path = filedialog.askopenfilename(initialdir=str(HOME), title="Archivo de código")
@@ -1414,7 +1419,7 @@ class AccionesTab(BaseTab):
                                    parent=self.app):
             return
         self.app.worker.submit("Code " + self.code_action.get() + "\n" + shown,
-                               lambda: run_process_text(argv, timeout=300), self.output)
+                               lambda: run_process_text(argv, timeout=gui_timeout()), self.output)
 
 
 class AgenteTab(BaseTab):
@@ -1496,7 +1501,7 @@ class AgenteTab(BaseTab):
                                    parent=self.app):
             return
         self.app.worker.submit("Agente · tarea única\n" + pretty_command(argv),
-                               lambda: run_process_text(argv, timeout=300), self.output)
+                               lambda: run_process_text(argv, timeout=gui_timeout()), self.output)
 
 
 class PromptsTab(BaseTab):
@@ -1617,7 +1622,7 @@ class PromptsTab(BaseTab):
                                    parent=self.app):
             return
         self.app.worker.submit("Usar prompt\n" + shown,
-                               lambda: run_process_text(argv, timeout=300), self.output)
+                               lambda: run_process_text(argv, timeout=gui_timeout()), self.output)
 
 
 class BenchTab(BaseTab):
