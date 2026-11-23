@@ -164,17 +164,32 @@ mantiene `gemma3:gpu` como default**; `orag ask -m qwen3:06b` es una opción vá
 para RAG rápida donde la velocidad importe más que la redacción, y `--precise`
 sigue siendo la vía para respuestas críticas (sin importar el tiempo).
 
-Sonda factual local (6 preguntas, salida JSON, acentos y subíndices normalizados):
+Comparación contra el perfil de máxima precisión (`--precise`, mismas tres
+preguntas): `nemotron3:precise` acertó la de embeddings y la de `safe-fit`, con
+respuestas citadas de 268 y 804 tokens a 3,4 tok/s; `qwen3:06b` solo acertó
+`safe-fit`, con 80–116 tokens a ~20 tok/s. La pregunta sobre el perfil preciso
+**agotó los 1024 tokens** en 304 s y dejó la respuesta final cortada; con
+`orag ask -m nemotron3:precise --max-tokens 600` (misma temp 0 y ctx 8192, sin el
+añadido «exhaustivo» de `--precise`) respondió completa en 21 s. Conclusión:
+`--precise` es más fiable, pero conviene vigilar su presupuesto; para preguntas
+cortas, el modelo directo con 600 tokens es más práctico. El timeout de la API
+en RAG `--precise` se amplió de 300 a 900 s (`PRECISE_API_TIMEOUT`) para que no
+falle antes de agotar el presupuesto.
 
-| Modelo | Aciertos |
-|---|---:|
-| `bonsai:q1` | 5/6 (falló «planeta rojo») |
-| `gemma3:q4`, `gemma3:gpu`, `lfm25:350m` | 5/6 (fallaron «febrero no bisiesto») |
-| `qwen3:06b` | 2/6 (falló París, 28, Marte y Cervantes) |
+Sonda factual local ampliada (20 preguntas, 5 modelos, salida JSON, acentos y
+subíndices normalizados; los 100 JSON fueron válidos):
+
+| Modelo | Aciertos | Fallos destacados |
+|---|---:|---|
+| `gemma3:gpu` | **17/20** | CO₂ (`C2O`), Júpiter (dijo Mercurio), días de febrero |
+| `gemma3:q4` | 16/20 | CO₂, Júpiter (dijo Tierra), planeta más cercano, anillos |
+| `bonsai:q1` | 14/20 | planeta rojo, anillos, océano, continente, Au |
+| `lfm25:350m` | 12/20 | meses, Júpiter, Mercurio, anillos, océano, continente |
+| `qwen3:06b` | 10/20 | Armstrong, Venus ×3, Cervantes, Los miserables, etc. |
 
 Esto confirma que Qwen3 0.6B debe usarse con grounding (RAG) y no como fuente de
 conocimiento libre; Bonsai aguanta mejor los datos generales pese a ser Q1_0,
-pero no desplaza a `gemma3:gpu` como modelo principal. Todas las pruebas locales,
+pero `gemma3:gpu` sigue siendo el modelo principal. Todas las pruebas locales,
 sin APIs externas ni créditos.
 
 Sobre `qwen35:gpu` / `qwen35:embed` (probados el 22/11/2026):

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-23 (vigésima séptima tanda)
+
+- **Sonda factual ampliada**: 20 preguntas × 5 modelos con salida JSON. Resultados:
+  `gemma3:gpu` 17/20, `gemma3:q4` 16/20, `bonsai:q1` 14/20, `lfm25:350m` 12/20 y
+  `qwen3:06b` 10/20. Las 100 respuestas fueron JSON válido. Gemma 3 sigue siendo
+  el más fiable; Qwen3 0.6B queda confirmado como modelo de grounding, no de
+  conocimiento libre.
+- **Comparativa RAG `--precise` vs `qwen3:06b`** sobre las mismas tres preguntas:
+  Nemotron3 acertó embeddings y `safe-fit` (268 y 804 tokens, 3,4 tok/s); Qwen3
+  solo `safe-fit` (80–116 tokens, ~20 tok/s). La pregunta sobre el perfil preciso
+  agotó 1024 tokens en 304 s y cortó la respuesta final; con
+  `-m nemotron3:precise --max-tokens 600` respondió completa en 21 s.
+- **Fix**: `PRECISE_API_TIMEOUT = 900` para RAG en perfil preciso (antes 300 s).
+  Verificado en inferencia real: la pregunta que daba `ERROR: timed out` terminó
+  en 304 s sin error. Nueva aserción en `tests/test-precision.py`. Defaults y
+  modelos principales sin cambios.
+
 ## 2026-11-23 (vigésima sexta tanda)
 
 - **Índice RAG reindexado** con `qwen:gpu` (mismo embedder y parámetros):

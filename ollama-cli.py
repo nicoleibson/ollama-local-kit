@@ -109,6 +109,8 @@ REASONING_MODEL = "nemotron3:gpu"
 PRECISE_MODEL = "nemotron3:precise"
 PRECISE_CTX = 8192
 PRECISE_MAX_TOKENS = 1024
+# 1024 tokens a ~3,4 tok/s pueden superar el timeout genérico de 300 s.
+PRECISE_API_TIMEOUT = 900
 PRECISE = os.environ.get("OLLAMA_KIT_PRECISE", "0") == "1"
 
 
@@ -1804,8 +1806,9 @@ def cmd_rag_ask(args):
     print(f"modelo: {args.model} | fragmentos: {len(picked)}/{candidatos} "
           f"| min-score {args.min_score} | presupuesto {effective_chars} chars "
           f"({data['embedding_model']} -> chat)\n")
+    timeout = PRECISE_API_TIMEOUT if getattr(args, "precise", False) else 300
     if args.no_stream:
-        r = api("/api/chat", payload)
+        r = api("/api/chat", payload, timeout=timeout)
         if r.get("error"):
             raise SystemExit("ERROR: " + str(r["error"]))
         print_reasoning(r)
@@ -1815,7 +1818,7 @@ def cmd_rag_ask(args):
         stats = {}
         shown_thinking = False
         answer_started = False
-        for chunk in api_stream("/api/chat", payload):
+        for chunk in api_stream("/api/chat", payload, timeout=timeout):
             msg = chunk.get("message", {})
             think_piece = msg.get("thinking", "")
             if think_piece:

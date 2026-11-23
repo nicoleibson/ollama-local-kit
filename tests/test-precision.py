@@ -96,4 +96,40 @@ assert captured_chat["precise"] is True
 assert captured_chat["temperature"] == 0.0
 assert captured_chat["ctx"] == 8192
 
+# Un RAG --precise necesita más de 300 s: la API debe recibir 900 s.
+assert mod.PRECISE_API_TIMEOUT == 900
+fake_index = {
+    "chunks": [{"path": "x.md", "text": "texto", "vector": [1.0], "start": 0}],
+    "embedding_model": "qwen:gpu", "chunk_chars": 900,
+}
+seen_timeout = {}
+
+
+def fake_api(path, payload=None, **kwargs):
+    seen_timeout.update(kwargs)
+    return {"message": {"content": "respuesta"}}
+
+
+def run_fake_rag(precise):
+    argv = ["rag", "ask", "--no-stream", "qué dice"]
+    if precise:
+        argv.insert(3, "--precise")
+    ns = mod.build_parser().parse_args(argv)
+    if precise:
+        mod.apply_precision_profile(ns)
+    with patch.object(mod, "rag_load", lambda: fake_index), \
+         patch.object(mod, "rag_embed",
+                      lambda texts, model: [[1.0] for _ in texts]), \
+         patch.object(mod, "rag_cosine", lambda a, b: 1.0), \
+         patch.object(mod, "api", fake_api), \
+         contextlib.redirect_stdout(io.StringIO()):
+        mod.cmd_rag_ask(ns)
+
+
+run_fake_rag(True)
+assert seen_timeout.get("timeout") == 900, seen_timeout
+seen_timeout.clear()
+run_fake_rag(False)
+assert seen_timeout.get("timeout") == 300, seen_timeout
+
 print("PRECISIÓN Y PRESUPUESTO: TODO OK")

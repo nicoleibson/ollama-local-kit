@@ -52,12 +52,18 @@ clasificar; Qwen3 y Bonsai cumplen JSON Schema y `act --dry-run`. La CLI envía
 `think:false` a `qwen3:*` para que no gaste el presupuesto de salida en razonar.
 
 El 23/11 se reindexó RAG con `qwen:gpu` (697 fragmentos, 52 archivos) y se comparó
-`gemma3:gpu` con `qwen3:06b` sobre las mismas fuentes. Qwen3 acertó `odgpu --safe-fit`
-y respondió unas 3× más rápido, pero **ambos** fallaron otras preguntas del índice;
-el default sigue siendo `gemma3:gpu`. Para RAG rápida se puede forzar
-`orag ask -m qwen3:06b`; para respuestas críticas, `--precise`. En una sonda factual
-de 6 preguntas, Qwen3 solo obtuvo 2/6, así que conviene usarlo siempre con contexto
-recuperado, nunca como fuente de conocimiento libre.
+`gemma3:gpu`, `qwen3:06b` y `--precise` sobre las mismas fuentes. Qwen3 acertó
+`odgpu --safe-fit` y respondió unas 3× más rápido, pero **ambos** fallaron otras
+preguntas; `--precise` fue el más fiable. El default sigue siendo `gemma3:gpu`.
+Para RAG rápida: `orag ask -m qwen3:06b`; para respuestas críticas: `--precise`
+(timeout ampliado a 900 s). Ojo: `--precise` puede agotar 1024 tokens de
+razonamiento y cortar la respuesta; para preguntas cortas funciona mejor
+`orag ask -m nemotron3:precise --max-tokens 600`.
+
+Sonda factual ampliada (20 preguntas, JSON válido en las 100 respuestas):
+`gemma3:gpu` 17/20, `gemma3:q4` 16/20, `bonsai:q1` 14/20, `lfm25:350m` 12/20 y
+`qwen3:06b` 10/20. Qwen3 conviene usarlo siempre con contexto recuperado, nunca
+como fuente de conocimiento libre.
 
 Qwen3.5-4B se importó y se probó como reemplazo de `qwen:gpu`, pero **no se adoptó**
 para RAG: es ~5x más lento y menos preciso (4/6 vs 5/6 en recuperación). Se conserva
