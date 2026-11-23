@@ -7,6 +7,8 @@
 #   gemma4-dgpu.sh --chat                 # chat interactivo (Ctrl+C para salir)
 #   gemma4-dgpu.sh --bench                # medir 80 tokens
 #   gemma4-dgpu.sh --stats "tu pregunta"  # cualquier opción de `ollama-cli.py chat`
+#   gemma4-dgpu.sh --safe-fit "pregunta"  # ctx 8192, capas ajustadas por Ollama
+#   gemma4-dgpu.sh --print-env            # muestra el plan sin arrancar nada
 set -euo pipefail
 
 PORT=11435
@@ -15,6 +17,25 @@ MODEL="gemma4:dgpu"
 CLI="/home/onion/ollama-cli.py"
 LOG="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.log"
 PIDFILE="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.pid"
+SAFE_MODEL="gemma4:dgpu-safe"
+SAFE_MODELFILE="/home/onion/ollama-local-kit/config/Modelfile.gemma4-dgpu-safe"
+SAFE_FIT=0
+CTX=2048
+
+if [[ "${1:-}" == "--safe-fit" ]]; then
+    SAFE_FIT=1
+    CTX=8192
+    MODEL="$SAFE_MODEL"
+    shift
+fi
+
+if [[ "${1:-}" == "--print-env" ]]; then
+    printf 'modelo=%s | contexto=%s | puerto=%s | GPU=Vulkan 1\n' "$MODEL" "$CTX" "$PORT"
+    if (( SAFE_FIT )); then
+        printf 'receta=%s (sin num_gpu fijo: Ollama ajusta capas)\n' "$SAFE_MODELFILE"
+    fi
+    exit 0
+fi
 
 stop_pidfile() {
     local announce="${1:-0}"
@@ -45,9 +66,14 @@ if ! MAIN_TAGS=$(curl -sf --max-time 2 http://127.0.0.1:11434/api/tags); then
     exit 1
 fi
 if ! grep -q "$MODEL" <<<"$MAIN_TAGS"; then
-    echo "ERROR: falta el tag $MODEL. Créalo con:" >&2
-    echo "  ollama create $MODEL -f ~/ollama-local-kit/config/Modelfile.gemma4-dgpu" >&2
-    exit 1
+    if (( SAFE_FIT )); then
+        echo "Creando $MODEL con la receta sin num_gpu fijo..." >&2
+        ollama create "$MODEL" -f "$SAFE_MODELFILE" >&2
+    else
+        echo "ERROR: falta el tag $MODEL. Créalo con:" >&2
+        echo "  ollama create $MODEL -f ~/ollama-local-kit/config/Modelfile.gemma4-dgpu" >&2
+        exit 1
+    fi
 fi
 
 stop_pidfile 1
@@ -56,7 +82,7 @@ nohup env \
     OLLAMA_HOST="$HOST" \
     OLLAMA_MODELS=/usr/share/ollama/.ollama/models \
     GGML_VK_VISIBLE_DEVICES=1 \
-    OLLAMA_CONTEXT_LENGTH=2048 \
+    OLLAMA_CONTEXT_LENGTH="$CTX" \
     OLLAMA_NUM_PARALLEL=1 \
     OLLAMA_MAX_LOADED_MODELS=1 \
     OLLAMA_KEEP_ALIVE=5m \
@@ -77,17 +103,17 @@ if (( ! ready )); then
     exit 1
 fi
 
-echo "R7 260X aislada en $PORT (GGML_VK_VISIBLE_DEVICES=1). Se apagará al terminar." >&2
+echo "R7 260X aislada en $PORT (GPU 1, ctx $CTX$( (( SAFE_FIT )) && printf ', capas automáticas' )). Se apagará al terminar." >&2
 
 case "${1:-}" in
     --bench)
-        OLLAMA_HOST="$HOST" "$CLI" bench "$MODEL" --tokens 80 --no-save
+        OLLAMA_HOST="$HOST" "$CLI" bench "$MODEL" --tokens 80 --ctx "$CTX" --no-save
         ;;
     --chat)
         shift
-        OLLAMA_HOST="$HOST" "$CLI" chat -m "$MODEL" "$@"
+        OLLAMA_HOST="$HOST" "$CLI" chat -m "$MODEL" --ctx "$CTX" "$@"
         ;;
     *)
-        OLLAMA_HOST="$HOST" "$CLI" chat -m "$MODEL" "$@"
+        OLLAMA_HOST="$HOST" "$CLI" chat -m "$MODEL" --ctx "$CTX" "$@"
         ;;
 esac

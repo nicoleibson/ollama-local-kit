@@ -1,0 +1,7 @@
+# Gemma 4 E4B Q2_K_P para la R7 260X con ctx 8192 sin num_gpu fijo.
+# Sin PARAMETER num_gpu, Ollama ajusta las capas al VRAM libre y evita el
+# aviso "cannot meet free memory target" que aparece con num_gpu 42 en 8192.
+# Es más lento; se usa solo con `odgpu --safe-fit`.
+FROM /home/onion/Documentos/ModelsIA/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q2_K_P.gguf
+PARAMETER temperature 0.3
+PARAMETER num_ctx 8192

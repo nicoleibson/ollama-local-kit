@@ -58,7 +58,14 @@ petición y la apaga, sin tocar el servicio principal ni la iGPU:
 odgpu "tu pregunta"
 odgpu --chat
 odgpu --bench
+odgpu --safe-fit "pregunta con texto largo"  # ctx 8192, capas ajustadas
 ```
+
+`--safe-fit` usa `gemma4:dgpu-safe` (ctx 8192 y **sin `num_gpu` fijo**) para que
+Ollama ajuste las capas a la VRAM libre; evita el aviso de memoria que aparece
+con 42 capas en 8192, a costa de velocidad. La primera llamada crea el tag desde
+`config/Modelfile.gemma4-dgpu-safe`. `odgpu --print-env` muestra el plan sin
+arrancar la dGPU.
 
 ## Inicio rápido
 

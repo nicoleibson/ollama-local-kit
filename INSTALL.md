@@ -193,8 +193,13 @@ chmod +x ollama-scripts/gemma4-dgpu.sh     # o copiarlo a ~/ollama-scripts/
 odgpu "tu pregunta"
 odgpu --chat
 odgpu --bench
+odgpu --safe-fit "pregunta con texto largo"  # ctx 8192, sin num_gpu fijo
+odgpu --print-env                             # plan sin arrancar nada
 ```
 
+Para ctx 8192 usa `config/Modelfile.gemma4-dgpu-safe`: sin `PARAMETER num_gpu`,
+así Ollama ajusta las capas a la VRAM libre en vez de abortar con 42 capas
+fijas. `--safe-fit` crea el tag `gemma4:dgpu-safe` la primera vez y es más lento.
 Mide ~8,5 tok/s con 42/43 capas en GPU y ~1,92 GiB de VRAM (de ~2,0 GiB). No
 modifica `override.conf` ni el servicio principal: la iGPU sigue siendo el
 default del resto de modelos. Si el puerto 11435 está ocupado, el script aborta.

@@ -502,7 +502,17 @@ odgpu "tu pregunta"                     # una respuesta
 odgpu --stats "tu pregunta"             # con tokens/s
 odgpu --chat                            # conversación interactiva
 odgpu --bench                           # 80 tokens, sin guardar en el historial
+odgpu --safe-fit "texto largo"          # ctx 8192, capas ajustadas por Ollama
+odgpu --print-env                       # muestra el plan sin arrancar la instancia
 ```
+
+Para prompts largos, `--safe-fit` cambia a `gemma4:dgpu-safe` (`num_ctx 8192`,
+receta `config/Modelfile.gemma4-dgpu-safe` **sin `num_gpu` fijo**) y fija
+`OLLAMA_CONTEXT_LENGTH=8192` en la instancia temporal. Así Ollama elige cuántas
+capas caben en los ~2,0 GiB libres y no aborta con el aviso
+`cannot meet free memory target` de las 42 capas. Es más lento; la primera
+llamada crea el tag si no existe. No se activó la dGPU para verificarlo: solo se
+comprobó `bash -n` y `--print-env`.
 
 El script **no toca `override.conf` ni el servicio principal**: este sigue con
 `GGML_VK_VISIBLE_DEVICES=0` y la iGPU continúa siendo el default de todos los

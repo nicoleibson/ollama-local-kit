@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-22 (vigésima tercera tanda)
+
+- `odgpu` añade `--safe-fit`: usa el nuevo tag `gemma4:dgpu-safe` (ctx 8192,
+  receta `config/Modelfile.gemma4-dgpu-safe` sin `num_gpu` fijo) para que Ollama
+  ajuste las capas a la VRAM libre de la R7 260X y no aborte con 42 capas fijas.
+  La primera llamada crea el tag; la velocidad baja, la precisión de contexto
+  largo se conserva.
+- Nuevo `--print-env`: muestra modelo, contexto, puerto y receta sin arrancar la
+  instancia temporal. `--ctx` se pasa ahora también a `chat` y `bench`.
+- Verificado con `bash -n` y `--print-env`; **no se activó la dGPU**. Documentado
+  en README, INSTALL y manual (sección 8).
+
 ## 2026-11-22 (vigésima segunda tanda)
 
 - **JSON Schema con reintento**: `act`, las decisiones del agente y el
