@@ -8,6 +8,9 @@
   uso normal de `odgpu` no cambia.
 - Alineado el manual con el script: el log de la instancia temporal se escribe en
   `${TMPDIR:-/tmp}/ollama-gemma4-dgpu.log`.
+- Corregido `ollama-cli.py bench`: ya no fuerza `num_ctx 2048` en cada petición,
+  sino que respeta el del modelo. Nueva opción `--ctx N` para forzar otro valor
+  solo cuando se pida explícitamente.
 
 ## 2026-11-22 (decimonovena tanda)
 

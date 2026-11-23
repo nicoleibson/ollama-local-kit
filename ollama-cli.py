@@ -1009,6 +1009,9 @@ def cmd_bench(args):
         bench_history_show(args.history if isinstance(args.history, int) else 15)
         return
     models = args.models or ["gemma3:q4", "gemma3:gpu", "nemotron3:gpu"]
+    opts = {"num_predict": args.tokens}
+    if getattr(args, "ctx", None):
+        opts["num_ctx"] = args.ctx
     results = []
     print(f"{'MODELO':<18} {'RESULTADO':<36}")
     print("-" * 56)
@@ -1016,7 +1019,7 @@ def cmd_bench(args):
         r = api("/api/generate", {
             "model": model, "prompt": BENCH_PROMPT, "stream": False,
             "think": False,
-            "options": {"num_ctx": 2048, "num_predict": args.tokens},
+            "options": opts,
         })
         if r.get("error"):
             print(f"{model:<18} ERROR: {str(r['error'])[:34]}")
@@ -2786,6 +2789,8 @@ def build_parser():
     b = sub.add_parser("bench", help="medir tokens/s")
     b.add_argument("models", nargs="*")
     b.add_argument("--tokens", type=int, default=30)
+    b.add_argument("--ctx", type=int, default=None,
+                   help="forzar num_ctx; por defecto usa el del modelo")
     b.add_argument("--history", nargs="?", const=15, type=int, metavar="N",
                    help="mostrar los últimos N resultados guardados")
     b.add_argument("--no-save", action="store_true", help="no añadir estos resultados al historial")

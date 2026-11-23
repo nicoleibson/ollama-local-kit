@@ -747,10 +747,13 @@ ocli bench                       # guarda el resultado de 3 modelos
 ocli bench --history             # últimos 15 registros
 ocli bench --history 5           # últimos 5
 ocli bench gemma3:q4 --no-save   # medir sin registrar
+ocli bench gemma3:ctx4k --ctx 4096 --no-save  # forzar contexto
 ```
 
-Es útil para detectar regresiones tras cambiar el gobernador, el drop-in de Ollama
-o los parámetros de un Modelfile.
+Por defecto `bench` usa el `num_ctx` declarado en el Modelfile de cada modelo;
+`--ctx` solo lo fuerza cuando se indica explícitamente. Es útil para detectar
+regresiones tras cambiar el gobernador, el drop-in de Ollama o los parámetros de
+un Modelfile.
 
 ---
 
