@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-23 (trigésima primera tanda)
+
+- Nueva opción **`orag ask --fast`**: usa `qwen3:06b` con 300 tokens, mantiene
+  `qwen:gpu` como embedding y `--min-score 0.10`. Encapsula la RAG rápida medida
+  el 23/11 (~20 tok/s frente a 7,4 de Gemma 3) sin cambiar el default.
+  `--fast` no se combina con `--precise` ni `--reasoning`; un `-m` explícito
+  manda. Verificado con `¿Qué hace odgpu --safe-fit?`: respuesta correcta con 97
+  tokens en 5,2 s. Aserciones nuevas en `tests/test-precision.py`; 10/10 pruebas.
+
 ## 2026-11-23 (trigésima tanda)
 
 - Corregidas las referencias que aún atribuían RAG a `nemotron3:gpu`: la tabla de

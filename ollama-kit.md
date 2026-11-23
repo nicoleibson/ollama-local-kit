@@ -304,7 +304,7 @@ offloaded 27/27 layers to GPU
 | Ejecutar acciones en terminal | `ocli act` / `ocli act --free` | JSON forzado, catálogo editable |
 | Vectores para RAG | `qwen:gpu` | Solo `/api/embed`; `qwen-embed:q8` quedó opcional, no importado |
 | Responder sobre archivos (RAG) | `gemma3:gpu` | Default del perfil tareas; cita fuentes. Con `--reasoning` pasa a `nemotron3:gpu` |
-| RAG rápida (opcional) | `qwen3:06b` | `orag ask -m qwen3:06b`, ~3× más rápido; requiere contexto recuperado |
+| RAG rápida (opcional) | `qwen3:06b` | `orag ask --fast`, ~3× más rápido; requiere contexto recuperado |
 | Probar Gemma 4 en la R7 260X | `odgpu` → `gemma4:dgpu` | 8,5 tok/s, instancia aislada; no cambia el default |
 | Probar Gemma 4 en CPU | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
 | Código/razonamiento muy largo | `ocloud` → `glm-5.3`, `kimi-k2.7-code` | nube bajo demanda, sin VRAM; consume créditos |
@@ -455,7 +455,7 @@ orag index manual.md scripts/ --max-files 50      # limitar cuántos archivos
 orag list                                         # ver archivos y fragmentos
 orag ask "cómo funciona el modo act" -k 3
 orag ask "qué script hace la copia" -m gemma3:q4  # forzar modelo
-orag ask "qué hace safe-fit" -m qwen3:06b         # RAG rápida (ver nota abajo)
+orag ask "qué hace safe-fit" --fast              # RAG rápida: qwen3:06b, 300 tok
 orag clear                                        # pide confirmación
 orag clear --yes
 ```
@@ -472,6 +472,7 @@ Opciones principales de `rag ask`:
 | `--max-tokens` | `192` (`384` con `--reasoning`, `1024` con `--precise`) | longitud máxima de la respuesta |
 | `--context-chars` | `3600` | tope de texto recuperado inyectado, recortado además por el presupuesto |
 | `--precise` | no | perfil de máxima precisión: modelo dedicado, temp 0 y razonamiento |
+| `--fast` | no | RAG rápida: `qwen3:06b` y 300 tokens; excluye `--reasoning` y `--precise` |
 
 Para usar la alternativa Qwen3.5 hay que reindexar **todo** el índice con el mismo modelo
 (no se pueden mezclar vectores de 1024 y 2560 dimensiones):
@@ -503,7 +504,7 @@ hay que actualizar también `-m/--model` de `embed`, el default de `rag index` y
 **Modelos:** el embedding siempre es `qwen:gpu` (solo `/api/embed`). Para redactar,
 el predeterminado del perfil tareas es `gemma3:gpu`; con `--reasoning` pasa a
 `nemotron3:gpu`, que sintetiza mejor fragmentos largos. `qwen3:06b` es una opción
-de RAG rápida con contexto (`-m qwen3:06b`). Como `OLLAMA_MAX_LOADED_MODELS=1`, al pasar de
+de RAG rápida con contexto (`--fast` o `-m qwen3:06b`). Como `OLLAMA_MAX_LOADED_MODELS=1`, al pasar de
 embeddings a chat Ollama descarga `qwen:gpu` y carga el modelo chat; eso añade un
 par de segundos por consulta y es normal ver `ollama ps` con un solo modelo.
 
@@ -511,8 +512,10 @@ par de segundos por consulta y es normal ver `ollama ps` con un solo modelo.
 tareas. En perfil tareas el default es `gemma3:gpu`; `--precise` usa
 `nemotron3:precise` aunque no se pase `-m`; `--reasoning` usa `nemotron3:gpu` en
 agente y RAG. `--precise` y `--reasoning` fijan temperatura 0 y contexto amplio,
-pero un `-m` explícito conserva ese modelo. Para saber qué modelo está activo en
-cada rol, `ocli config` es más fiable que preguntárselo a RAG.
+pero un `-m` explícito conserva ese modelo. `--fast` usa `qwen3:06b` con 300
+tokens y no se combina con `--precise` ni `--reasoning`; un `-m` explícito
+también manda sobre `--fast`. Para saber qué modelo está activo en cada rol,
+`ocli config` es más fiable que preguntárselo a RAG.
 
 **Verificado:** el manual y los 16 scripts generan unos 40 fragmentos (el número
 crece al ampliar este documento). Preguntas reales:

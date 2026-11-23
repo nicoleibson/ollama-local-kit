@@ -132,4 +132,26 @@ seen_timeout.clear()
 run_fake_rag(False)
 assert seen_timeout.get("timeout") == 300, seen_timeout
 
+# RAG rápida: Qwen3 0.6B, 300 tokens, sin pensar; -m explícito manda.
+fast = mod.build_parser().parse_args(["rag", "ask", "--fast", "qué dice"])
+assert mod.apply_fast_profile(fast) is True
+assert fast.model == "qwen3:06b" and fast.max_tokens == 300, fast
+assert mod.thinking_for(fast.model) is False
+
+fast_explicit = mod.build_parser().parse_args(
+    ["rag", "ask", "--fast", "-m", "gemma3:gpu", "qué dice"])
+assert mod.apply_fast_profile(fast_explicit) is True
+assert fast_explicit.model == "gemma3:gpu", fast_explicit
+
+for extra in ("--precise", "--reasoning"):
+    conflict = mod.build_parser().parse_args(
+        ["rag", "ask", "--fast", extra, "qué dice"])
+    mod.apply_precision_profile(conflict)
+    try:
+        mod.apply_fast_profile(conflict)
+    except SystemExit as exc:
+        assert "no se combina" in str(exc), exc
+    else:
+        raise AssertionError(f"--fast {extra} debió rechazarse")
+
 print("PRECISIÓN Y PRESUPUESTO: TODO OK")

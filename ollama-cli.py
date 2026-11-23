@@ -112,6 +112,9 @@ PRECISE_MAX_TOKENS = 1024
 # 1024 tokens a ~3,4 tok/s pueden superar el timeout genérico de 300 s.
 PRECISE_API_TIMEOUT = 900
 PRECISE = os.environ.get("OLLAMA_KIT_PRECISE", "0") == "1"
+# RAG rápida opcional: el modelo pequeño responde con grounding y sin pensar.
+FAST_MODEL = "qwen3:06b"
+FAST_MAX_TOKENS = 300
 
 
 def use_reasoning(args=None) -> bool:
@@ -139,6 +142,20 @@ def apply_precision_profile(args) -> bool:
         setattr(args, "max_tokens", PRECISE_MAX_TOKENS)
     if getattr(args, "model", None) in (None, TASK_MODEL, REASONING_MODEL):
         args.model = PRECISE_MODEL
+    return True
+
+
+def apply_fast_profile(args) -> bool:
+    """RAG rápida: Qwen3 0.6B con presupuesto corto; un `-m` explícito manda."""
+    if not getattr(args, "fast", False):
+        return False
+    if getattr(args, "precise", False) or getattr(args, "reasoning", False):
+        raise SystemExit("--fast no se combina con --precise ni --reasoning")
+    if getattr(args, "model", None) is None:
+        args.model = FAST_MODEL
+    default_tokens = 192 if TASK_MODE else 384
+    if getattr(args, "max_tokens", 0) == default_tokens:
+        args.max_tokens = FAST_MAX_TOKENS
     return True
 
 
@@ -3078,6 +3095,9 @@ def build_parser():
     rq.add_argument("--max-tokens", type=int, default=192 if TASK_MODE else 384)
     rq.add_argument("--context-chars", type=int, default=3600)
     rq.add_argument("--no-stream", action="store_true")
+    rq.add_argument("--fast", action="store_true",
+                    help="RAG rápida: qwen3:06b, 300 tokens; no combinar con "
+                         "--reasoning ni --precise")
     rq.add_argument("--reasoning", action="store_true",
                     help="usar nemotron3:gpu para sintetizar la respuesta")
     rq.add_argument("--precise", action="store_true",
@@ -3361,6 +3381,7 @@ def main():
     args = parser.parse_args()
     DEBUG = getattr(args, "debug", False) or bool(os.environ.get("OLLAMA_KIT_DEBUG"))
     apply_precision_profile(args)
+    apply_fast_profile(args)
     if getattr(args, "model", None) is None:
         if PROVIDER in PROVIDER_DEFAULT_MODELS:
             args.model = PROVIDER_DEFAULT_MODELS[PROVIDER]
