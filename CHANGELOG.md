@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-11-23 (vigésima sexta tanda)
+
+- **Índice RAG reindexado** con `qwen:gpu` (mismo embedder y parámetros):
+  697 fragmentos, 52 archivos. El índice anterior estaba 15 horas desactualizado;
+  copia de seguridad en `/tmp/opencode/index-before-reindex.json`.
+- **Comparativa RAG con índice fresco** (`-k 4 --ctx 2048 --max-tokens 300`) entre
+  `gemma3:gpu` y `qwen3:06b`: ambos responden con las mismas fuentes, pero Qwen3
+  es más conciso y ~3× más rápido (20,0 tok/s vs 7,3–7,5). Acierto claro de
+  Qwen3 en `¿Qué hace odgpu --safe-fit?`: ctx 8192, capas ajustadas y 2,64 vs
+  8,54 tok/s; Gemma 3 dio una definición genérica de `odgpu`. En las otras dos
+  preguntas **ambos cometieron errores** (atribuir el embedding por defecto a
+  `qwen35:embed` o mezclar los modelos del perfil preciso). Conclusión: no cambiar
+  el default; `qwen3:06b` queda como sintetizador opcional de RAG rápida
+  (`orag ask -m qwen3:06b`) y `--precise` sigue siendo la vía para respuestas
+  críticas.
+- **Sonda factual local** de 6 preguntas con JSON: `bonsai:q1`, `gemma3:q4`,
+  `gemma3:gpu` y `lfm25:350m` obtuvieron 5/6; `qwen3:06b` 2/6 (Madrid, 31,
+  Venus y Don Quijote mal). Normalizados acentos y subíndices. Refuerza usar
+  Qwen3 0.6B solo con contexto recuperado, nunca como fuente de conocimiento
+  libre. Sin APIs externas ni créditos.
+
 ## 2026-11-22 (vigésima quinta tanda)
 
 - **Cuatro GGUF nuevos importados y medidos** desde `~/Descargas/models`:

@@ -38,7 +38,7 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 | `gemma4:cpu` | prueba de Gemma 4, solo CPU | 2,56 tok/s, 0 GiB VRAM |
 | `gemma4:dgpu` | Gemma 4 en la R7 260X, vía `odgpu` | 8,54 tok/s, instancia aislada |
 | `lfm25:350m` | enrutado/clasificación rápida (LFM2.5 350M) | 43,34 tok/s |
-| `qwen3:06b` | chat/JSON ligero (Qwen3 0.6B, `think:false`) | 25,21 tok/s |
+| `qwen3:06b` | chat/JSON ligero y RAG rápida opcional (Qwen3 0.6B, `think:false`) | 25,21 tok/s |
 | `bonsai:q1` | experimento Qwen3 1.7B en Q1_0 | 25,06 tok/s |
 | `gemma3:1b` | Gemma 3 1B-it stock, alternativa a `gemma3:q4` | 9,11 tok/s |
 
@@ -50,6 +50,14 @@ Los cuatro tags nuevos se importaron desde `~/Descargas/models` y se midieron co
 LFM2.5 es el más rápido pero falló una pregunta de física, así que se reserva para
 clasificar; Qwen3 y Bonsai cumplen JSON Schema y `act --dry-run`. La CLI envía
 `think:false` a `qwen3:*` para que no gaste el presupuesto de salida en razonar.
+
+El 23/11 se reindexó RAG con `qwen:gpu` (697 fragmentos, 52 archivos) y se comparó
+`gemma3:gpu` con `qwen3:06b` sobre las mismas fuentes. Qwen3 acertó `odgpu --safe-fit`
+y respondió unas 3× más rápido, pero **ambos** fallaron otras preguntas del índice;
+el default sigue siendo `gemma3:gpu`. Para RAG rápida se puede forzar
+`orag ask -m qwen3:06b`; para respuestas críticas, `--precise`. En una sonda factual
+de 6 preguntas, Qwen3 solo obtuvo 2/6, así que conviene usarlo siempre con contexto
+recuperado, nunca como fuente de conocimiento libre.
 
 Qwen3.5-4B se importó y se probó como reemplazo de `qwen:gpu`, pero **no se adoptó**
 para RAG: es ~5x más lento y menos preciso (4/6 vs 5/6 en recuperación). Se conserva

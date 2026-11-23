@@ -140,9 +140,42 @@ español y respetan un JSON Schema simple; `act --dry-run` con `qwen3:06b` y
 
 Recomendación práctica: `lfm25:350m` para enrutado/clasificación (es el más
 rápido, pero confundió dispersión con refracción al explicar el cielo),
-`qwen3:06b` para chat y JSON ligero, `bonsai:q1` como experimento de 1 bit y
-`gemma3:1b` solo si se quiere la versión stock en vez de los pesos «Heretic» de
-`gemma3:q4`.
+`qwen3:06b` para chat, JSON ligero y RAG rápida con contexto, `bonsai:q1` como
+experimento de 1 bit y `gemma3:1b` solo si se quiere la versión stock en vez de
+los pesos «Heretic» de `gemma3:q4`.
+
+### RAG y precisión factual (23/11/2026)
+
+El índice estaba desactualizado (19:47 del 22/11 frente a documentos editados a
+las 23:49), así que se reconstruyó con `qwen:gpu`, chunk 900 y solape 150:
+**697 fragmentos en 52 archivos**. La copia anterior quedó en
+`/tmp/opencode/index-before-reindex.json`. Con el índice fresco se preguntó lo
+mismo a `gemma3:gpu` y `qwen3:06b` (`-k 4 --ctx 2048 --max-tokens 300`):
+
+| Pregunta | `gemma3:gpu` | `qwen3:06b` |
+|---|---|---|
+| `¿Qué hace odgpu --safe-fit?` | Definición genérica de `odgpu`, repite texto | Correcto: ctx 8192, capas ajustadas, 2,64 vs 8,54 tok/s |
+| Embeddings en RAG | Dice que se usa `qwen35:embed` (❌) | Dice que se usa Qwen3.5-4B y recomienda `qwen:gpu` (❌ parcial) |
+| Perfil de máxima precisión | Mezcla parámetros del perfil tareas (❌) | Cita `--precise`/`OLLAMA_KIT_PRECISE=1`, pero mezcla modelos (❌ parcial) |
+
+Ambos recibieron exactamente las mismas fuentes. Qwen3 respondió en 80–116 tokens
+(20,0 tok/s) frente a los 136–300 de Gemma 3 (7,3–7,5 tok/s). Conclusión: **se
+mantiene `gemma3:gpu` como default**; `orag ask -m qwen3:06b` es una opción válida
+para RAG rápida donde la velocidad importe más que la redacción, y `--precise`
+sigue siendo la vía para respuestas críticas (sin importar el tiempo).
+
+Sonda factual local (6 preguntas, salida JSON, acentos y subíndices normalizados):
+
+| Modelo | Aciertos |
+|---|---:|
+| `bonsai:q1` | 5/6 (falló «planeta rojo») |
+| `gemma3:q4`, `gemma3:gpu`, `lfm25:350m` | 5/6 (fallaron «febrero no bisiesto») |
+| `qwen3:06b` | 2/6 (falló París, 28, Marte y Cervantes) |
+
+Esto confirma que Qwen3 0.6B debe usarse con grounding (RAG) y no como fuente de
+conocimiento libre; Bonsai aguanta mejor los datos generales pese a ser Q1_0,
+pero no desplaza a `gemma3:gpu` como modelo principal. Todas las pruebas locales,
+sin APIs externas ni créditos.
 
 Sobre `qwen35:gpu` / `qwen35:embed` (probados el 22/11/2026):
 
@@ -253,6 +286,7 @@ offloaded 27/27 layers to GPU
 | Ejecutar acciones en terminal | `ocli act` / `ocli act --free` | JSON forzado, catálogo editable |
 | Vectores para RAG | `qwen:gpu` | Solo `/api/embed`; `qwen-embed:q8` quedó opcional, no importado |
 | Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; los Gemma 1B copian fragmentos |
+| RAG rápida (opcional) | `qwen3:06b` | `orag ask -m qwen3:06b`, ~3× más rápido; requiere contexto recuperado |
 | Probar Gemma 4 en la R7 260X | `odgpu` → `gemma4:dgpu` | 8,5 tok/s, instancia aislada; no cambia el default |
 | Probar Gemma 4 en CPU | `gemma4:cpu` | 2,5 tok/s, 0 GiB VRAM; no es práctico como default |
 | Código/razonamiento muy largo | `ocloud` → `glm-5.3`, `kimi-k2.7-code` | nube bajo demanda, sin VRAM; consume créditos |
@@ -403,6 +437,7 @@ orag index manual.md scripts/ --max-files 50      # limitar cuántos archivos
 orag list                                         # ver archivos y fragmentos
 orag ask "cómo funciona el modo act" -k 3
 orag ask "qué script hace la copia" -m gemma3:q4  # forzar modelo
+orag ask "qué hace safe-fit" -m qwen3:06b         # RAG rápida (ver nota abajo)
 orag clear                                        # pide confirmación
 orag clear --yes
 ```
@@ -1267,7 +1302,10 @@ En RAG, `--min-score` vale 0.10 por defecto y `rag_context_budget()` recorta el
 contexto: `ctx - max_tokens - system - pregunta - reserva (64) - razonamiento
 (128)` a 3 caracteres/token. Así el prompt no se trunca aunque el tag tenga 8192.
 La cabecera indica fragmentos usados/totales, umbral y presupuesto; sin
-candidatos se imprime `No lo encuentro en el índice`.
+candidatos se imprime `No lo encuentro en el índice`. La comparativa de modelos
+con el índice de 23/11 y la sonda factual están en la sección 1; resumen: no
+cambiar el default, usar `-m qwen3:06b` solo para RAG rápida con contexto y
+`--precise` para respuestas críticas.
 
 ### Validación de JSON Schema con reintento
 
