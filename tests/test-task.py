@@ -94,6 +94,18 @@ assert "RAZONAMIENTO:" in out2.getvalue(), out2.getvalue()
 assert "no devolvió texto" in out2.getvalue(), out2.getvalue()
 print("RAZONAMIENTO VISIBLE: OK")
 
+# Qwen3 piensa por defecto: se desactiva explícitamente sin tocar otros modelos.
+assert mod.thinking_for("qwen3:06b") is False
+assert mod.thinking_for("Qwen3 0.6B") is None
+assert mod.thinking_for("qwen35:gpu") is None
+assert mod.thinking_for("gemma3:gpu") is None
+seen.clear()
+ns_qwen = SimpleNamespace(**{**vars(ns), "model": "qwen3:06b"})
+with patch.object(mod, "api", fake_api), contextlib.redirect_stdout(io.StringIO()):
+    mod.cmd_chat(ns_qwen)
+assert seen["payload"].get("think") is False, seen["payload"]
+print("QWEN3 SIN PENSAMIENTO: OK")
+
 # El agente de una sola petición no entra en REPL y muestra su decisión.
 def fake_agent_api(path, payload=None, **kwargs):
     seen["payload"] = payload

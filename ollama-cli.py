@@ -262,12 +262,17 @@ def api_chat_json(payload, schema, timeout=300):
 # Nemotron sí declara 'thinking'. El bloque RAZONAMIENTO se muestra siempre;
 # cuando el modelo no puede pensar, se indica explícitamente.
 THINKING_MODELS = frozenset({"nemotron3:gpu", "nemotron-3-super"})
+# Qwen3 decide pensar por su cuenta y se come el presupuesto de salida en
+# respuestas cortas; se desactiva de forma explícita al enviar el payload.
+NO_THINK_PREFIXES = ("qwen3:", "qwen3-")
 
 
 def thinking_for(model: str | None) -> bool | None:
     name = str(model or "").lower()
     if name in THINKING_MODELS or "nemotron" in name or "think" in name:
         return True
+    if name == "qwen3" or name.startswith(NO_THINK_PREFIXES[:2]):
+        return False
     return None
 
 

@@ -37,9 +37,19 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 | `qwen35:embed` | embeddings alternativos (no recomendado) | 2560 dimensiones, ~5 s / 5 textos |
 | `gemma4:cpu` | prueba de Gemma 4, solo CPU | 2,56 tok/s, 0 GiB VRAM |
 | `gemma4:dgpu` | Gemma 4 en la R7 260X, vía `odgpu` | 8,54 tok/s, instancia aislada |
+| `lfm25:350m` | enrutado/clasificación rápida (LFM2.5 350M) | 43,34 tok/s |
+| `qwen3:06b` | chat/JSON ligero (Qwen3 0.6B, `think:false`) | 25,21 tok/s |
+| `bonsai:q1` | experimento Qwen3 1.7B en Q1_0 | 25,06 tok/s |
+| `gemma3:1b` | Gemma 3 1B-it stock, alternativa a `gemma3:q4` | 9,11 tok/s |
 
 `qwen:latest`, `gemma3:latest` y `nemotron3:latest` rinden menos: no tienen
 `num_gpu` fijo en el Modelfile.
+
+Los cuatro tags nuevos se importaron desde `~/Descargas/models` y se midieron con
+`ocli bench --tokens 80 --ctx 2048` (tres pasadas, sin guardar en el historial).
+LFM2.5 es el más rápido pero falló una pregunta de física, así que se reserva para
+clasificar; Qwen3 y Bonsai cumplen JSON Schema y `act --dry-run`. La CLI envía
+`think:false` a `qwen3:*` para que no gaste el presupuesto de salida en razonar.
 
 Qwen3.5-4B se importó y se probó como reemplazo de `qwen:gpu`, pero **no se adoptó**
 para RAG: es ~5x más lento y menos preciso (4/6 vs 5/6 en recuperación). Se conserva

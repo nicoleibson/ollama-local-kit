@@ -116,9 +116,33 @@ después se usa un tag. Al importar, los pesos se copian a
 
 `qwen:gpu` no viene de esos archivos: es `Qwen3-0.6B-Base` F16, **solo embedding**
 (`/api/chat` y `/api/generate` responden `does not support`). `nemotron3:gpu` es
-Nemotron-H 4B IQ2_M, 2,6–3,6 tok/s, modelo de respaldo para razonamiento. Es el
-único de la tabla que declara la capacidad `thinking`; Gemma 3 solo declara
-`completion` y rechaza `think=true` con HTTP 400.
+Nemotron-H 4B IQ2_M, 2,6–3,6 tok/s, modelo de respaldo para razonamiento. Junto
+con `qwen3:06b` son los que declaran `thinking`; la CLI pide razonamiento a
+Nemotron3 pero envía `think:false` a los tags `qwen3:*`, que piensan por su
+cuenta y agotaban el presupuesto de salida en respuestas cortas. Gemma 3 solo
+declara `completion` y rechaza `think=true` con HTTP 400.
+
+### Modelos nuevos evaluados el 22/11/2026
+
+Importados desde `~/Descargas/models` con tags nuevos (sin sobrescribir nada):
+
+| GGUF | Tag | Arquitectura | Contexto | tok/s (80 tok, ctx 2048, media de 3) |
+|---|---|---|---:|---:|
+| `Bonsai-1.7B-Q1_0.gguf` (237 M) | `bonsai:q1` | Qwen3 1.7B, Q1_0 | 32k YaRN | 25,06 |
+| `gemma-3-1b-it-Q4_K_M.gguf` (769 M) | `gemma3:1b` | Gemma 3 1B-it | 32k | 9,11 |
+| `LFM2.5-350M-Q4_K_M.gguf` (219 M) | `lfm25:350m` | LFM2.5 350M híbrido | 128k | **43,34** |
+| `Qwen_Qwen3-0.6B-Q4_K_M.gguf` (462 M) | `qwen3:06b` | Qwen3 0.6B GQA | 32k | 25,21 |
+
+Referencia: `gemma3:q4` 8,86 tok/s en las mismas condiciones. El bench usó
+`--no-save`, así que el historial no se modificó. Los cuatro responden en
+español y respetan un JSON Schema simple; `act --dry-run` con `qwen3:06b` y
+`bonsai:q1` propone `date` correctamente.
+
+Recomendación práctica: `lfm25:350m` para enrutado/clasificación (es el más
+rápido, pero confundió dispersión con refracción al explicar el cielo),
+`qwen3:06b` para chat y JSON ligero, `bonsai:q1` como experimento de 1 bit y
+`gemma3:1b` solo si se quiere la versión stock en vez de los pesos «Heretic» de
+`gemma3:q4`.
 
 Sobre `qwen35:gpu` / `qwen35:embed` (probados el 22/11/2026):
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-22 (vigésima quinta tanda)
+
+- **Cuatro GGUF nuevos importados y medidos** desde `~/Descargas/models`:
+  `bonsai:q1` (Qwen3 1.7B Q1_0), `gemma3:1b` (Gemma 3 1B-it Q4_K_M),
+  `lfm25:350m` (LFM2.5 350M Q4_K_M) y `qwen3:06b` (Qwen3 0.6B Q4_K_M). Tags
+  nuevos, sin sobrescribir los existentes; `--no-save` en el bench.
+- Benchmark local con `ocli bench --tokens 80 --ctx 2048`, tres pasadas y
+  promedio: `lfm25:350m` 43,34 tok/s, `bonsai:q1` 25,06, `qwen3:06b` 25,21,
+  `gemma3:1b` 9,11 y referencia `gemma3:q4` 8,86.
+- Comprobación funcional: los cuatro responden en español y cumplen un JSON
+  Schema simple; `act --dry-run` con `qwen3:06b` y `bonsai:q1` elige `date`.
+- `thinking_for()` envía ahora `think:false` a los tags `qwen3:*`: Qwen3 pensaba
+  por su cuenta y agotaba el presupuesto de salida en respuestas cortas. No
+  afecta a Gemma 3 ni a `qwen35`. Nueva aserción en `tests/test-task.py`; 10/10
+  pruebas, sin APIs externas ni créditos.
+
 ## 2026-11-22 (vigésima cuarta tanda)
 
 - **Prueba real de `odgpu --safe-fit`** (autorizada por el usuario): creó
