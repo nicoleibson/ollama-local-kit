@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-22 (vigésima cuarta tanda)
+
+- **Prueba real de `odgpu --safe-fit`** (autorizada por el usuario): creó
+  `gemma4:dgpu-safe`, arrancó la instancia temporal en 11435 con ctx 8192 y
+  respondió a `di HOLA`. El log emitió `cannot meet free memory target`, pero no
+  abortó: Ollama situó 9/43 capas en GPU y completó la respuesta. Midiendo la
+  evaluación total (incluido el razonamiento), 2,64 tok/s frente a 8,54 del modo
+  de 42 capas con ctx 2048.
+- Comprobada la limpieza posterior: puerto 11435 cerrado, PIDFILE limpio y
+  servicio principal en 11434 respondiendo. Sin APIs externas ni créditos.
+- Corregida la documentación: el aviso de memoria sí aparece, es informativo;
+  la nota sobre `think:false` en Gemma4 estaba desactualizada. README, INSTALL,
+  manual y copia instalada sincronizados.
+
 ## 2026-11-22 (vigésima tercera tanda)
 
 - `odgpu` añade `--safe-fit`: usa el nuevo tag `gemma4:dgpu-safe` (ctx 8192,
@@ -9,8 +23,9 @@
   largo se conserva.
 - Nuevo `--print-env`: muestra modelo, contexto, puerto y receta sin arrancar la
   instancia temporal. `--ctx` se pasa ahora también a `chat` y `bench`.
-- Verificado con `bash -n` y `--print-env`; **no se activó la dGPU**. Documentado
-  en README, INSTALL y manual (sección 8).
+- Verificado inicialmente con `bash -n` y `--print-env`; la prueba real se
+  registró en la tanda siguiente. Documentado en README, INSTALL y manual
+  (sección 8).
 
 ## 2026-11-22 (vigésima segunda tanda)
 

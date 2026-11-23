@@ -509,10 +509,14 @@ odgpu --print-env                       # muestra el plan sin arrancar la instan
 Para prompts largos, `--safe-fit` cambia a `gemma4:dgpu-safe` (`num_ctx 8192`,
 receta `config/Modelfile.gemma4-dgpu-safe` **sin `num_gpu` fijo**) y fija
 `OLLAMA_CONTEXT_LENGTH=8192` en la instancia temporal. Así Ollama elige cuántas
-capas caben en los ~2,0 GiB libres y no aborta con el aviso
-`cannot meet free memory target` de las 42 capas. Es más lento; la primera
-llamada crea el tag si no existe. No se activó la dGPU para verificarlo: solo se
-comprobó `bash -n` y `--print-env`.
+capas caben en los ~2,0 GiB libres. **Probado con una inferencia real**
+(`odgpu --safe-fit "di HOLA"`): el log emite `cannot meet free memory target of
+1024 MiB, need to reduce device memory by 1268 MiB`, pero es informativo —no
+aborta—; Ollama carga 9/43 capas en GPU, mantiene `n_ctx = 8192` y devuelve la
+respuesta. La primera llamada crea el tag si no existe. Tras la prueba, el
+puerto 11435 quedó cerrado, el PIDFILE limpio y el servicio de 11434 sigue
+respondiendo. Es mucho más lento que el modo de 42 capas; véase la tabla
+siguiente.
 
 El script **no toca `override.conf` ni el servicio principal**: este sigue con
 `GGML_VK_VISIBLE_DEVICES=0` y la iGPU continúa siendo el default de todos los
@@ -525,6 +529,7 @@ defecto `/tmp/ollama-gemma4-dgpu.log`, o dentro de `$TMPDIR` si lo defines.
 | Configuración | tok/s |
 |---|---|
 | Gemma4 en dGPU, 42 capas, ctx 2048 | **8,54** |
+| Gemma4 en dGPU, safe-fit, ctx 8192 (9/43 capas) | 2,64 |
 | Gemma4 en dGPU, 36 capas | 4,39 |
 | Gemma4 en CPU | 2,33–2,56 |
 | Nemotron3 en iGPU | 3,47 |
@@ -535,9 +540,11 @@ margen es justo, por eso bajar a 36 capas empeora mucho el rendimiento. Con
 `num_gpu > 0` en la iGPU sigue fallando (`Not enough memory for command
 submission`). La R7 260X se usa **solo** bajo este procedimiento.
 
-Nota: sin `think:false`, Gemma4 gasta los tokens en razonamiento interno y
-devuelve `response` vacío. La CLI y el script lo desactivan; las cifras de arriba
-son con `think:false`.
+Nota: Gemma4 expone el razonamiento en `message.thinking` y la CLI lo muestra en
+`RAZONAMIENTO:`; el texto final llega en `message.content`. En la prueba de
+safe-fit, 296 tokens evaluados incluyeron ese razonamiento, por lo que 2,64
+tok/s no son comparables directamente con una respuesta sin pensar. Las cifras
+anteriores corresponden a sus configuraciones respectivas.
 
 ---
 

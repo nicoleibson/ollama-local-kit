@@ -199,8 +199,10 @@ odgpu --print-env                             # plan sin arrancar nada
 
 Para ctx 8192 usa `config/Modelfile.gemma4-dgpu-safe`: sin `PARAMETER num_gpu`,
 así Ollama ajusta las capas a la VRAM libre en vez de abortar con 42 capas
-fijas. `--safe-fit` crea el tag `gemma4:dgpu-safe` la primera vez y es más lento.
-Mide ~8,5 tok/s con 42/43 capas en GPU y ~1,92 GiB de VRAM (de ~2,0 GiB). No
+fijas. `--safe-fit` crea el tag `gemma4:dgpu-safe` la primera vez. Probado con
+"di HOLA": el log mostró `cannot meet free memory target`, pero la petición
+terminó con 9/43 capas en GPU y ctx 8192; midió 2,64 tok/s (incluido el
+razonamiento), frente a ~8,5 tok/s con 42/43 capas y ctx 2048. No
 modifica `override.conf` ni el servicio principal: la iGPU sigue siendo el
 default del resto de modelos. Si el puerto 11435 está ocupado, el script aborta.
 Ver detalles y comparativa en [`ollama-kit.md`](ollama-kit.md), sección 8.

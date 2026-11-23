@@ -62,10 +62,12 @@ odgpu --safe-fit "pregunta con texto largo"  # ctx 8192, capas ajustadas
 ```
 
 `--safe-fit` usa `gemma4:dgpu-safe` (ctx 8192 y **sin `num_gpu` fijo**) para que
-Ollama ajuste las capas a la VRAM libre; evita el aviso de memoria que aparece
-con 42 capas en 8192, a costa de velocidad. La primera llamada crea el tag desde
-`config/Modelfile.gemma4-dgpu-safe`. `odgpu --print-env` muestra el plan sin
-arrancar la dGPU.
+Ollama ajuste las capas a la VRAM libre. En la prueba real apareció el aviso
+`cannot meet free memory target`, pero no hubo aborto: Ollama situó 9/43 capas en
+GPU, mantuvo ctx 8192 y respondió. El coste es alto (2,64 tok/s frente a 8,54 con
+42 capas y ctx 2048) y buena parte de los tokens son de razonamiento. La primera
+llamada crea el tag desde `config/Modelfile.gemma4-dgpu-safe`.
+`odgpu --print-env` muestra el plan sin arrancar la dGPU.
 
 ## Inicio rápido
 
