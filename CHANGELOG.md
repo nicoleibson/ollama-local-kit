@@ -6,6 +6,8 @@
   (`130`) y `TERM` (`143`), aviso y limpieza de un PIDFILE huérfano al arrancar,
   y mensaje específico cuando el servicio principal de 11434 no responde. El
   uso normal de `odgpu` no cambia.
+- Alineado el manual con el script: el log de la instancia temporal se escribe en
+  `${TMPDIR:-/tmp}/ollama-gemma4-dgpu.log`.
 
 ## 2026-11-22 (decimonovena tanda)
 

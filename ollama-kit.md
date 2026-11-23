@@ -504,7 +504,8 @@ odgpu --bench                           # 80 tokens, sin guardar en el historial
 El script **no toca `override.conf` ni el servicio principal**: este sigue con
 `GGML_VK_VISIBLE_DEVICES=0` y la iGPU continúa siendo el default de todos los
 modelos. Si el puerto 11435 ya está ocupado, se niega a arrancar. El log de la
-instancia temporal se escribe en `/tmp/ollama-gemma4-dgpu.log`.
+instancia temporal se escribe en `${TMPDIR:-/tmp}/ollama-gemma4-dgpu.log`: por
+defecto `/tmp/ollama-gemma4-dgpu.log`, o dentro de `$TMPDIR` si lo defines.
 
 ### Resultados medidos (22/11/2026)
 
