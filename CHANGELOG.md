@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-22 (vigésima segunda tanda)
+
+- **JSON Schema con reintento**: `act`, las decisiones del agente y el
+  clasificador de flujos validan la salida contra el esquema (`schema_valid`) y,
+  si no cumple, reenvían una vez con el prompt recortado, una instrucción más
+  estricta y más margen de salida dentro del contexto. El razonamiento de ambos
+  intentos se muestra. Se sigue usando `format`/JSON Schema, no tool calling.
+- `ogui` añade una casilla global **Máxima precisión**: exporta
+  `OLLAMA_KIT_PRECISE=1` a todos los subprocess, así que alcanza a las doce
+  pestañas sin tocar cada comando. La cabecera y el estado indican el perfil
+  activo. No relaja confirmaciones ni la lista blanca.
+- Nueva `tests/test-schema.py`; diez pruebas versionadas, `SELFTEST OK`, copias
+  instaladas sincronizadas. Sin APIs de pago.
+
 ## 2026-11-22 (vigésima primera tanda)
 
 - **Perfil de precisión opt-in**: `--precise` o `OLLAMA_KIT_PRECISE=1` en `chat`,

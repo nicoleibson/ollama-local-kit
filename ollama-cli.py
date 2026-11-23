@@ -149,6 +149,115 @@ def print_reasoning(result) -> None:
     print(text if text else "(el modelo no devolvió texto de razonamiento)")
 
 
+def json_from_text(text):
+    """Extrae un JSON de una respuesta, tolerando cercas y texto alrededor."""
+    clean = (text or "").strip()
+    if clean.startswith("```"):
+        clean = re.sub(r"^```[^\n]*\n?", "", clean)
+        clean = re.sub(r"```$", "", clean).strip()
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", clean, re.S)
+        if not match:
+            return None
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+
+
+def schema_valid(value, schema):
+    """Validación mínima de JSON Schema: tipos, required, enum y items."""
+    if not isinstance(schema, dict):
+        return True
+    if "enum" in schema and value not in schema["enum"]:
+        return False
+    kind = schema.get("type")
+    if kind == "object":
+        if not isinstance(value, dict):
+            return False
+        if any(key not in value for key in schema.get("required", [])):
+            return False
+        for key, spec in schema.get("properties", {}).items():
+            if key in value and not schema_valid(value[key], spec):
+                return False
+        return True
+    if kind == "array":
+        if not isinstance(value, list):
+            return False
+        item = schema.get("items")
+        return all(schema_valid(entry, item) for entry in value) if item else True
+    if kind == "string":
+        return isinstance(value, str)
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == "boolean":
+        return isinstance(value, bool)
+    return True
+
+
+def shorten_for_retry(text, limit=1200):
+    """Conserva el principio y el final de un prompt largo para el reintento."""
+    if not isinstance(text, str) or len(text) <= limit:
+        return text
+    head = limit // 3
+    return text[:head] + "\n…[texto recortado en el reintento]…\n" + text[-(limit - head):]
+
+
+def json_retry_payload(payload):
+    """Prepara una segunda petición: prompt más corto e instrucción estricta."""
+    retry = dict(payload)
+    retry["messages"] = []
+    for message in payload.get("messages", []):
+        item = dict(message)
+        if item.get("role") == "user" and isinstance(item.get("content"), str):
+            item["content"] = shorten_for_retry(item["content"])
+        retry["messages"].append(item)
+    retry["messages"].append({
+        "role": "user",
+        "content": ("La respuesta anterior no cumplía el esquema. Devuelve SOLO "
+                    "un JSON válido, sin cercas de código ni texto adicional."),
+    })
+    options = dict(payload.get("options") or {})
+    if "num_predict" in options:
+        try:
+            ctx = int(options.get("num_ctx", 2048))
+            cap = max(256, min(2048, ctx - 256))
+            options["num_predict"] = min(
+                max(int(options["num_predict"]) * 2, 256), cap)
+        except (TypeError, ValueError):
+            pass
+    retry["options"] = options
+    return retry
+
+
+def api_chat_json(payload, schema, timeout=300):
+    """Pide JSON con format y reintenta una vez si la salida no valida."""
+    r = api("/api/chat", payload, timeout=timeout)
+    if r.get("error"):
+        raise SystemExit("ERROR: " + str(r["error"]))
+    print_reasoning(r)
+    text = r.get("message", {}).get("content", "")
+    data = json_from_text(text)
+    if schema_valid(data, schema):
+        return data, r, False
+
+    retry = json_retry_payload(payload)
+    r2 = api("/api/chat", retry, timeout=timeout)
+    if r2.get("error"):
+        raise SystemExit("ERROR: " + str(r2["error"]))
+    print_reasoning(r2)
+    text2 = r2.get("message", {}).get("content", "")
+    data2 = json_from_text(text2)
+    if not schema_valid(data2, schema):
+        raise SystemExit("El modelo no devolvió un JSON válido tras el reintento: "
+                         + repr(text2[:300]))
+    return data2, r2, True
+
+
 # Gemma 3 solo declara 'completion': enviar think=True devuelve HTTP 400.
 # Nemotron sí declara 'thinking'. El bloque RAZONAMIENTO se muestra siempre;
 # cuando el modelo no puede pensar, se indica explícitamente.
@@ -951,15 +1060,12 @@ def cmd_act(args):
     flag = thinking_for(model)
     if flag is not None:
         payload["think"] = flag
-    r = api("/api/chat", payload)
-    if r.get("error"):
-        raise SystemExit("ERROR: " + str(r["error"]))
-    print_reasoning(r)
-    content = r["message"]["content"]
-    try:
-        proposed = json.loads(content)["command"]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        raise SystemExit("El modelo no devolvió un JSON válido: " + repr(content))
+    data, r, retried = api_chat_json(payload, fmt)
+    if retried:
+        print("(JSON revalidado tras un reintento)")
+    proposed = data.get("command")
+    if not isinstance(proposed, str) or not proposed.strip():
+        raise SystemExit("El modelo no devolvió un comando válido: " + repr(data))
 
     if args.free:
         command = str(proposed).strip().strip("`")
@@ -2127,28 +2233,9 @@ def agent_call(messages, args):
         )
     if not (NO_SCHEMA and args.no_schema):
         payload["format"] = agent_schema()
-    r = api("/api/chat", payload)
-    if r.get("error"):
-        raise SystemExit("ERROR: " + str(r["error"]))
-    print_reasoning(r)
-    content = r.get("message", {}).get("content", "")
-    text = content.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[^\n]*\n?", "", text)
-        text = re.sub(r"```$", "", text).strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.S)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                data = None
-        else:
-            data = None
-        if not isinstance(data, dict):
-            raise SystemExit("El agente no devolvió un JSON válido: " + repr(content[:300]))
+    data, r, retried = api_chat_json(payload, agent_schema())
+    if retried:
+        print("(JSON del agente revalidado tras un reintento)")
     if data.get("tool") not in AGENT_TOOL_NAMES:
         raise SystemExit(f"El agente eligió una herramienta desconocida: {data.get('tool')!r}")
     return data, r
@@ -2366,7 +2453,19 @@ def flow_chat(system, user, args, schema=None, max_tokens=None):
     if r.get("error"):
         raise SystemExit("ERROR: " + str(r["error"]))
     print_reasoning(r)
-    return r.get("message", {}).get("content", "").strip()
+    text = r.get("message", {}).get("content", "").strip()
+    if schema and not schema_valid(json_from_text(text), schema):
+        retry = json_retry_payload(payload)
+        r2 = api("/api/chat", retry, timeout=300)
+        if r2.get("error"):
+            raise SystemExit("ERROR: " + str(r2["error"]))
+        print_reasoning(r2)
+        text = r2.get("message", {}).get("content", "").strip()
+        if schema_valid(json_from_text(text), schema):
+            print("(JSON de flujo revalidado tras un reintento)")
+        else:
+            print("(el flujo sigue sin devolver JSON válido; se usa la respuesta literal)")
+    return text
 
 
 def flow_parse_json(text, fallback):

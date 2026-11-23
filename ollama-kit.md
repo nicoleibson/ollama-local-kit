@@ -1135,8 +1135,12 @@ Seguridad de la ventana:
 
 - Todos los subprocess se lanzan con `OLLAMA_KIT_LOCAL=1` y
   `OLLAMA_KIT_TASK_MODE=1`, y se eliminan `OLLAMA_HOST`, `OLLAMA_API_KEY`,
-  `NVIDIA_API_KEY`, `GEMINI_API_KEY` y `OLLAMA_KIT_PROVIDER`. Aunque haya keys
-  guardadas, la GUI no las exporta.
+  `NVIDIA_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_KIT_PROVIDER` y
+  `OLLAMA_KIT_PRECISE`. Aunque haya keys guardadas, la GUI no las exporta.
+- La casilla global **Máxima precisión** fija `OLLAMA_KIT_PRECISE=1` para todos
+  los subprocess; alcanza a las doce pestañas sin tocar cada comando. La
+  cabecera y el estado muestran «perfil preciso» o «perfil tareas». No relaja la
+  lista blanca ni las confirmaciones.
 - La pestaña Comandos solo muestra una lista blanca de entradas de solo lectura.
   Quedan fuera benchmarks con inferencia, reindexado RAG, `review`, borrados,
   `stop` y copias de seguridad.
@@ -1224,6 +1228,22 @@ contexto: `ctx - max_tokens - system - pregunta - reserva (64) - razonamiento
 La cabecera indica fragmentos usados/totales, umbral y presupuesto; sin
 candidatos se imprime `No lo encuentro en el índice`.
 
+### Validación de JSON Schema con reintento
+
+`act`, `agent_call` (decisiones del agente) y `flow_chat` con esquema usan
+`api_chat_json()`: validan la respuesta con `schema_valid()` (tipos, `required`,
+`enum` e `items`) antes de aceptarla. Si no valida, se prepara una segunda
+petición con `json_retry_payload()`: el contenido de usuario largo se recorta
+conservando principio y final, se añade una instrucción que exige solo JSON y se
+amplía `num_predict` hasta el margen disponible del contexto. El bloque
+`RAZONAMIENTO:` de ambos intentos se imprime. Si el segundo tampoco valida, la
+CLI termina con un error explícito en vez de seguir con datos inventados.
+
+Esto refuerza la preferencia del kit por `format` + JSON Schema frente al tool
+calling nativo con modelos pequeños. Sin inferencias: `tests/test-schema.py`
+simula una primera respuesta inválida y una segunda correcta, y comprueba el
+reintento en `act` y en flujos.
+
 ### Razonamiento siempre visible
 
 Toda respuesta de `chat`, `act`, `run`, RAG, agente y flujos empieza por un bloque
@@ -1264,6 +1284,7 @@ variables de entorno aisladas.
 | `test-session.py` | sesiones persistentes y comandos de reanudación |
 | `test-task.py` | perfil tareas, defaults, razonamiento visible y agente de una sola petición |
 | `test-precision.py` | perfil preciso, defaults y presupuesto anti-truncado de RAG |
+| `test-schema.py` | validación de esquemas, recorte del prompt y reintento en `act` y flujos |
 
 ```bash
 for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done

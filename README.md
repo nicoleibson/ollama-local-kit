@@ -115,7 +115,9 @@ Las pestañas nuevas cubren el perfil de tareas: **Agente** ejecuta `agent
 muestra `RAZONAMIENTO AGENTE:`; **Prompts** gestiona la biblioteca de plantillas;
 **Bench** mide modelos locales y dibuja barras de tok/s con el historial.
 Toda respuesta de la CLI incluye un bloque `RAZONAMIENTO:`; si el modelo no puede
-pensar, se indica `(el modelo no devolvió texto de razonamiento)`.
+pensar, se indica `(el modelo no devolvió texto de razonamiento)`. La casilla
+global **Máxima precisión** exporta `OLLAMA_KIT_PRECISE=1` a todos los subprocess
+y cambia el estado a «perfil preciso»; afecta a las doce pestañas.
 
 RAG indexa archivos con `qwen:gpu` y pregunta con `gemma3:gpu` (usa
 `--reasoning` para sintetizar con `nemotron3:gpu`). Acciones simula con `act
@@ -201,12 +203,18 @@ contradicciones. La cabecera muestra `fragmentos usados/totales`, umbral y
 presupuesto en caracteres. Sin fragmentos, la respuesta es
 `No lo encuentro en el índice`.
 
+`act`, el agente y el clasificador de flujos validan el JSON devuelto contra su
+esquema. Si la salida no cumple (falta una clave, valor fuera de `enum`, JSON
+rodeado de texto), se reenvía una vez con el prompt acortado, una instrucción
+más estricta y más margen de salida; el razonamiento de los dos intentos se
+muestra. Sigue usándose `format` + JSON Schema, no tool calling.
+
 ## Pruebas versionadas
 
 Las pruebas viven en [`tests/`](tests/) y no hacen inferencias: simulan la API,
 los subprocess y los widgets de Tkinter. Cubren agente, flujos, modo gratuito,
 GUI (12 pestañas), proveedores, defaults, perfil de tareas y perfil de precisión
-(incluido el presupuesto anti-truncado de RAG).
+(incluido el presupuesto anti-truncado de RAG), GUI y reintento de JSON Schema.
 
 ```bash
 for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done

@@ -257,7 +257,8 @@ ocli chat --precise --no-stream "di HOLA"      # nemotron3:precise (lento), razo
 ofree config                                  # debe decir GRATIS: solo modelos locales
 oflow --help                                  # debe mostrar map/slide/classify/ask
 python3 -m py_compile ~/ollama-kit-gui.py      # sintaxis de la ventana Tkinter
-ogui                                          # 12 pestañas; revisa RAG, Agente y Acciones sin ejecutar nada
+ogui                                          # 12 pestañas; marca "Máxima precisión": el estado dice "perfil preciso"
+                                              # revisa RAG, Agente y Acciones sin ejecutar nada
 for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
 ofree flow map /home/onion/ollama-kit.md --prompt 'Resume' --out prueba --limit 1
 cat ~/.ollama-flow/prueba/report.md           # estado en disco, reanudable
@@ -289,7 +290,7 @@ ogemini config                                # PROVEEDOR: gemini
 `ocli doctor` debe terminar con **TODO CORRECTO**. El único aviso habitual es
 "ningún modelo cargado" cuando no hay ninguna inferencia en curso.
 
-`selftest.sh` comprueba sintaxis, catálogo, índice RAG, `doctor` y las nueve
+`selftest.sh` comprueba sintaxis, catálogo, índice RAG, `doctor` y las diez
 pruebas de `~/ollama-local-kit/tests/` (sin inferencias). Si el repo está en otra
 ruta, indícala con `OLLAMA_KIT_TESTS=/ruta/tests bash ~/ollama-scripts/selftest.sh`.
 

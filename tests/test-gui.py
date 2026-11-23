@@ -299,6 +299,18 @@ with patch.object(mod, "cli_text", fake_cli), \
     app.bench_tab.refresh()
     assert len(app.bench_tab.tree.get_children()) == 2
 
+    # Precisión global: la casilla alcanza a todas las pestañas por entorno.
+    app.precise_var.set(True)
+    app.toggle_precise()
+    assert mod.PRECISE_MODE is True
+    assert mod.local_env()["OLLAMA_KIT_PRECISE"] == "1"
+    assert "perfil preciso" in app.status_var.get()
+    assert "perfil preciso" in app.profile_var.get()
+    app.precise_var.set(False)
+    app.toggle_precise()
+    assert "OLLAMA_KIT_PRECISE" not in mod.local_env()
+    assert "perfil tareas" in app.status_var.get()
+
     app.destroy()
 print("TKINTER Y BOTONES: OK")
 print("GUI: TODO OK")

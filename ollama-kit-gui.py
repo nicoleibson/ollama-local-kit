@@ -32,6 +32,8 @@ PROMPTS_PATH = HOME / ".ollama-prompts.json"
 BENCH_HISTORY = HOME / ".ollama-bench-history.jsonl"
 DEFAULT_MODEL = "gemma3:gpu"
 REASONING_MODEL = "nemotron3:gpu"
+# La casilla global de precisión se propaga a todos los subprocess vía entorno.
+PRECISE_MODE = False
 
 # Se eliminan antes de llamar a la CLI. OLLAMA_KIT_LOCAL basta para que el CLI
 # use el servidor de esta máquina aunque existan keys guardadas en ~/.ollama-*.
@@ -43,6 +45,7 @@ CLEAR_ENV = (
     "GOOGLE_API_KEY",
     "OPENAI_API_KEY",
     "OLLAMA_KIT_PROVIDER",
+    "OLLAMA_KIT_PRECISE",
     "OPENAI_BASE_URL",
 )
 
@@ -71,6 +74,8 @@ def local_env(extra: dict | None = None) -> dict:
         env.pop(key, None)
     env["OLLAMA_KIT_LOCAL"] = "1"
     env.setdefault("OLLAMA_KIT_TASK_MODE", "1")
+    if PRECISE_MODE:
+        env["OLLAMA_KIT_PRECISE"] = "1"
     if extra:
         env.update(extra)
     return env
@@ -1711,6 +1716,9 @@ class KitGUI(tk.Tk):
         self.minsize(1050, 680)
         self.configure(bg="#101418")
         self.status_var = tk.StringVar(value="Listo · local, perfil tareas")
+        self.profile_var = tk.StringVar(
+            value="  ·  local, perfil tareas, razonamiento visible")
+        self.precise_var = tk.BooleanVar(value=PRECISE_MODE)
         self.model_names: list[str] = []
         self.model_combos: list[ttk.Combobox] = []
         self.optional_model_combos: list[ttk.Combobox] = []
@@ -1738,8 +1746,10 @@ class KitGUI(tk.Tk):
         head.pack(fill="x")
         ttk.Label(head, text="KIT OLLAMA LOCAL",
                   font=("DejaVu Sans", 16, "bold")).pack(side="left")
-        ttk.Label(head, text="  ·  local, perfil tareas, razonamiento visible",
+        ttk.Label(head, textvariable=self.profile_var,
                   foreground="#7fd1b9").pack(side="left")
+        ttk.Checkbutton(head, text="Máxima precisión", variable=self.precise_var,
+                        command=self.toggle_precise).pack(side="right", padx=(0, 10))
         ttk.Button(head, text="Actualizar todo", command=self.refresh_all).pack(side="right")
         ttk.Label(head, textvariable=self.status_var, foreground="#9fb0bb").pack(
             side="right", padx=(0, 12))
@@ -1763,6 +1773,14 @@ class KitGUI(tk.Tk):
         self.registro_tab = RegistroTab(self)
 
         self.after(250, self.refresh_all)
+
+    def toggle_precise(self) -> None:
+        """Activa el perfil preciso para todas las pestañas y subprocess."""
+        global PRECISE_MODE
+        PRECISE_MODE = bool(self.precise_var.get())
+        perfil = "perfil preciso" if PRECISE_MODE else "perfil tareas"
+        self.status_var.set(f"Listo · local, {perfil}")
+        self.profile_var.set(f"  ·  local, {perfil}, razonamiento visible")
 
     def sync_model_combos(self) -> None:
         values = self.model_names or [DEFAULT_MODEL]
@@ -1796,7 +1814,8 @@ class KitGUI(tk.Tk):
 
     def _chain_next(self) -> None:
         if self._chain_index >= len(self._chain):
-            self.status_var.set("Listo · local, perfil tareas")
+            perfil = "perfil preciso" if PRECISE_MODE else "perfil tareas"
+            self.status_var.set(f"Listo · local, {perfil}")
             return
         step = self._chain[self._chain_index]
         self._chain_index += 1
