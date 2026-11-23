@@ -154,4 +154,30 @@ for extra in ("--precise", "--reasoning"):
     else:
         raise AssertionError(f"--fast {extra} debió rechazarse")
 
+# `run --fast` propaga el perfil al delegar en RAG.
+captured_fast = {}
+run_fast = mod.build_parser().parse_args(
+    ["run", "--intent", "rag", "--fast", "qué dice el manual"])
+with patch.object(mod, "rag_load",
+                  lambda: {"chunks": [{"text": "x"}],
+                           "embedding_model": "qwen:gpu"}), \
+     patch.object(mod, "cmd_rag_ask",
+                  lambda ns: captured_fast.update(vars(ns))), \
+     contextlib.redirect_stdout(io.StringIO()):
+    mod.cmd_run(run_fast)
+assert captured_fast["fast"] is True, captured_fast
+assert captured_fast["model"] == "qwen3:06b", captured_fast
+assert captured_fast["max_tokens"] == 300, captured_fast
+assert captured_fast["min_score"] == 0.10, captured_fast
+
+run_conflict = mod.build_parser().parse_args(
+    ["run", "--intent", "rag", "--fast", "--precise", "qué dice"])
+try:
+    with patch.object(mod, "rag_load", lambda: {"chunks": []}):
+        mod.cmd_run(run_conflict)
+except SystemExit as exc:
+    assert "no se combina" in str(exc), exc
+else:
+    raise AssertionError("run --fast --precise debió rechazarse")
+
 print("PRECISIÓN Y PRESUPUESTO: TODO OK")

@@ -1898,6 +1898,9 @@ def cmd_run(args):
     text = " ".join(args.text).strip()
     if not text:
         raise SystemExit("Escribe una instrucción. Ej: ocli run 'muestra la fecha'")
+    if getattr(args, "fast", False) and (
+            getattr(args, "precise", False) or getattr(args, "reasoning", False)):
+        raise SystemExit("--fast no se combina con --precise ni --reasoning")
 
     rag_data = rag_load()
     intents = ["act", "chat"] + (["rag"] if rag_data["chunks"] else [])
@@ -1978,19 +1981,25 @@ def cmd_run(args):
         return
 
     if intent == "rag":
+        fast = getattr(args, "fast", False)
         ns = argparse.Namespace(
             question=text.split(),
-            model=args.model or default_model_for("rag", args),
+            model=None if fast and args.model is None
+            else (args.model or default_model_for("rag", args)),
             embed_model=rag_data.get("embedding_model") or "qwen:gpu",
             k=args.k,
-            min_score=0.10 if getattr(args, "precise", False) else 0.0,
+            min_score=0.10 if (fast or getattr(args, "precise", False)) else 0.0,
             ctx=2048,
             max_tokens=192 if not use_reasoning(args) else 384,
             context_chars=3600, no_stream=args.no_stream,
             reasoning=getattr(args, "reasoning", False),
             precise=getattr(args, "precise", False),
+            fast=fast,
         )
         apply_precision_profile(ns)
+        apply_fast_profile(ns)
+        if ns.model is None:
+            ns.model = default_model_for("rag", ns)
         cmd_rag_ask(ns)
         return
 
@@ -3007,6 +3016,8 @@ def build_parser():
                    help="usar nemotron3:gpu en el enrutador y las respuestas")
     u.add_argument("--precise", action="store_true",
                    help="máxima precisión: nemotron3:precise, temp 0, ctx 8192, 1024 tokens")
+    u.add_argument("--fast", action="store_true",
+                   help="si la intención es RAG, usar qwen3:06b y 300 tokens")
     u.set_defaults(func=cmd_run)
 
     b = sub.add_parser("bench", help="medir tokens/s")

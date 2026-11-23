@@ -547,6 +547,7 @@ orun "en los scripts, cuál hace la copia"            # -> rag
 orun "por qué el cielo es azul"                      # -> chat
 orun --dry-run "haz una copia de seguridad"          # solo muestra la decisión
 orun --intent chat --no-stream "responde OK"         # saltar clasificación
+orun --intent rag --fast "qué dice el manual"        # RAG rápida con qwen3:06b
 ```
 
 | Opción | Para qué |
@@ -556,6 +557,7 @@ orun --intent chat --no-stream "responde OK"         # saltar clasificación
 | `--act-model` | modelo usado por `act` |
 | `-k, --top-k` | fragmentos a recuperar si decide `rag` |
 | `--dry-run` | clasifica y muestra qué haría, sin ejecutar |
+| `--fast` | si la intención es `rag`, usa `qwen3:06b` y 300 tokens; excluye `--reasoning` y `--precise` |
 | `--no-stream`, `--stats`, `--system`, `--catalog` | se pasan al subcomando correspondiente |
 
 Clasificaciones verificadas: fecha, memoria y copia de seguridad → `act`; preguntas
