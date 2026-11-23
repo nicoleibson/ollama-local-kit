@@ -16,6 +16,7 @@ oagent --prompt "resume este repo"        # agente de una sola tarea, sin REPL
 ~/ollama-bench.sh gemma3:gpu              # medir velocidad
 orag index /home/onion/ollama-kit.md      # indexar archivos para RAG
 orag ask "cómo funciona el modo act"      # preguntar sobre lo indexado
+ochat --precise "explica esto con detalle" # máxima precisión: lento, sin prisa
 orun "muestra la fecha"                   # enrutador: act / rag / chat
 owatch                                    # monitor en vivo
 odgpu "tu pregunta"                       # Gemma4 en la R7 260X (instancia aislada)
@@ -224,6 +225,7 @@ offloaded 27/27 layers to GPU
 | Chat, redacción, `oflow`, acciones | `gemma3:gpu` | Q6_K (uncensored): principal; más exactitud, 7,8 tok/s |
 | Máxima velocidad | `gemma3:q4` | Q4_K_M, 9,3 tok/s; misma base, algo menos de calidad |
 | Razonamiento más complejo | `nemotron3:gpu` | 4B, pero 2,6 tok/s |
+| Máxima precisión (sin importar velocidad) | `nemotron3:precise` | `--precise`: temp 0, ctx 8192, 1024 tokens, ~3 tok/s |
 | Ejecutar acciones en terminal | `ocli act` / `ocli act --free` | JSON forzado, catálogo editable |
 | Vectores para RAG | `qwen:gpu` | Solo `/api/embed`; `qwen-embed:q8` quedó opcional, no importado |
 | Responder sobre archivos (RAG) | `nemotron3:gpu` | Sintetiza y cita; los Gemma 1B copian fragmentos |
@@ -386,12 +388,13 @@ Opciones principales de `rag ask`:
 | Opción | Por defecto | Para qué |
 |---|---|---|
 | `-k, --top-k` | `3` | cuántos fragmentos recuperar |
-| `-m, --model` | `nemotron3:gpu` | modelo que redacta la respuesta |
+| `-m, --model` | `gemma3:gpu` (`nemotron3:precise` con `--precise`) | modelo que redacta la respuesta |
 | `--embed-model` | `qwen:gpu` | modelo de embeddings |
-| `--min-score` | `0.0` | descartar fragmentos poco similares |
-| `--ctx` | `2048` | contexto del modelo chat |
-| `--max-tokens` | `384` | longitud máxima de la respuesta |
-| `--context-chars` | `3600` | tope de texto recuperado inyectado |
+| `--min-score` | `0.10` | descartar fragmentos poco similares (`0` desactiva) |
+| `--ctx` | `2048` (`8192` con `--precise`) | contexto del modelo chat |
+| `--max-tokens` | `192` (`384` con `--reasoning`, `1024` con `--precise`) | longitud máxima de la respuesta |
+| `--context-chars` | `3600` | tope de texto recuperado inyectado, recortado además por el presupuesto |
+| `--precise` | no | perfil de máxima precisión: modelo dedicado, temp 0 y razonamiento |
 
 Para usar la alternativa Qwen3.5 hay que reindexar **todo** el índice con el mismo modelo
 (no se pueden mezclar vectores de 1024 y 2560 dimensiones):
@@ -1003,6 +1006,7 @@ En `ask`: `--path` (obligatorio), `--embed-model`, `-k` (3) y `--context-chars`
 | BONAIRE (dGPU, descartada) | ~35 |
 | Dos instancias (iGPU 8,4 + dGPU 22,7) | ~31 agregado |
 | `nemotron3:gpu` | 2,6–3,6 |
+| `nemotron3:precise` (ctx 8192, 1024 tokens de salida) | 3,08 |
 | `qwen35:gpu` (33/33 capas en GPU) | 2,61 |
 | `gemma4:cpu` (100% CPU, 0 GiB VRAM) | 2,56 |
 | `gemma4:dgpu` (42/43 capas, instancia aislada) | 8,54 |
@@ -1191,6 +1195,35 @@ OLLAMA_KIT_TASK_MODE=0 ocli chat "explica esto"
 oagent --reasoning --prompt "analiza este diff"
 ```
 
+### Perfil de precisión (opt-in)
+
+`--precise` o `OLLAMA_KIT_PRECISE=1` invierte la prioridad: máxima precisión sin
+importar el tiempo. Está en `chat`, `act`, `run`, `agent` y `rag ask`.
+
+| Parámetro | Perfil tareas | Perfil preciso |
+|---|---|---|
+| Modelo | `gemma3:gpu` | `nemotron3:precise` |
+| Temperatura | 0,3 (0 en agente/RAG) | 0 |
+| Contexto | 2048 | 8192 |
+| Salida máxima | 192–512 tokens | 1024 tokens |
+| Razonamiento | visible si el modelo lo da | `think` activo y visible |
+
+```bash
+ocli chat --precise "analiza este diff"
+orag ask "¿qué dice el contrato?" --precise -k 4
+OLLAMA_KIT_PRECISE=1 ocli config    # muestra PERFIL DE PRECISIÓN
+```
+
+Un `-m` explícito se respeta; se ajustan los demás parámetros. La receta es
+`config/Modelfile.nemotron3-precise`. Medición local: 620 tokens en 201 s
+(3,08 tok/s), con respuesta final y cita `[3]` correcta. No usa APIs de pago.
+
+En RAG, `--min-score` vale 0.10 por defecto y `rag_context_budget()` recorta el
+contexto: `ctx - max_tokens - system - pregunta - reserva (64) - razonamiento
+(128)` a 3 caracteres/token. Así el prompt no se trunca aunque el tag tenga 8192.
+La cabecera indica fragmentos usados/totales, umbral y presupuesto; sin
+candidatos se imprime `No lo encuentro en el índice`.
+
 ### Razonamiento siempre visible
 
 Toda respuesta de `chat`, `act`, `run`, RAG, agente y flujos empieza por un bloque
@@ -1230,6 +1263,7 @@ variables de entorno aisladas.
 | `test-nvidia-default.py` | defaults por proveedor y `--reasoning` |
 | `test-session.py` | sesiones persistentes y comandos de reanudación |
 | `test-task.py` | perfil tareas, defaults, razonamiento visible y agente de una sola petición |
+| `test-precision.py` | perfil preciso, defaults y presupuesto anti-truncado de RAG |
 
 ```bash
 for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done

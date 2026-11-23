@@ -31,6 +31,7 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 | `gemma3:gpu` | **principal**: chat, `oflow`, acciones, agente, RAG, enrutador y tests (Q6_K uncensored) | 7,8 tok/s |
 | `gemma3:q4` | alternativa rápida (Q4_K_M) | 9,3–9,8 tok/s |
 | `nemotron3:gpu` | **respaldo** de razonamiento (`--reasoning` o `OLLAMA_KIT_TASK_MODE=0`) y `act --free` | ~2,6–3,5 tok/s |
+| `nemotron3:precise` | **máxima precisión** (`--precise`): temp 0, ctx 8192, 1024 tokens | ~3,1 tok/s |
 | `qwen:gpu` | embeddings (solo `/api/embed`) | 1024 dimensiones, ~1 s / 5 textos |
 | `qwen35:gpu` | generación alternativa, 100% GPU | 2,61 tok/s, 2,66 GiB VRAM |
 | `qwen35:embed` | embeddings alternativos (no recomendado) | 2560 dimensiones, ~5 s / 5 textos |
@@ -85,6 +86,9 @@ ogemini chat -m gemini-4-hydrogen "explica esto"
 oagent --prompt "resume este repo"             # tarea única, sin REPL
 oagent --root ~/ollama-local-kit --session trabajo
 oagent --reasoning --prompt "analiza este diff"  # respaldo Nemotron
+ochat --precise "analiza este diff"         # máxima precisión: nemotron3:precise
+orag ask "¿qué dice el contrato?" --precise  # RAG exhaustivo y citado
+OLLAMA_KIT_PRECISE=1 ocli config             # confirmar perfil activo
 ofree chat -m glm-5.3-flash "hola"            # gratuito: traduce a nemotron3:gpu
 oflow map informe.md --prompt "Resume en 3 viñetas" --out informe
 oflow slide novela.txt --prompt "Continúa el resumen" --carry 300
@@ -173,11 +177,36 @@ HTTP 400, así que en ese caso se imprime `(el modelo no devolvió texto de
 razonamiento)`. `--think` queda como bandera histórica compatible. Para volver
 al respaldo usa `--reasoning` o `OLLAMA_KIT_TASK_MODE=0`.
 
+### Perfil de precisión (opt-in)
+
+Cuando la calidad importa más que la velocidad:
+
+```bash
+ochat --precise "explica este diff"
+orag ask "¿qué dice el índice?" --precise -k 4
+OLLAMA_KIT_PRECISE=1 ocli chat "explica este diff"
+```
+
+`--precise` (o la variable) está disponible en `chat`, `act`, `run`, `agent` y
+`rag ask`. Fuerza `nemotron3:precise`, `temperature 0`, `num_ctx 8192` y
+`num_predict 1024`, activa `think` y mantiene el razonamiento visible. Un modelo
+indicado explícitamente con `-m` se respeta; se ajustan los demás parámetros. La
+receta es `config/Modelfile.nemotron3-precise`. Es ~3 tok/s: una respuesta RAG
+con cita correcta tardó unos 3 minutos. No usa APIs ni créditos.
+
+En RAG, el perfil preciso filtra con `--min-score 0.10` por defecto, calcula el
+presupuesto de contexto desde `ctx - max_tokens - reserva` para que el prompt no
+se trunque, pide una sola pasada de razonamiento y exige citas `[n]` con aviso de
+contradicciones. La cabecera muestra `fragmentos usados/totales`, umbral y
+presupuesto en caracteres. Sin fragmentos, la respuesta es
+`No lo encuentro en el índice`.
+
 ## Pruebas versionadas
 
 Las pruebas viven en [`tests/`](tests/) y no hacen inferencias: simulan la API,
 los subprocess y los widgets de Tkinter. Cubren agente, flujos, modo gratuito,
-GUI (12 pestañas), proveedores, defaults y perfil de tareas.
+GUI (12 pestañas), proveedores, defaults, perfil de tareas y perfil de precisión
+(incluido el presupuesto anti-truncado de RAG).
 
 ```bash
 for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done

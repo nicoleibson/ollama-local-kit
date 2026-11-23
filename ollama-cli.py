@@ -104,6 +104,12 @@ LOCAL_DEFAULT_MODELS = {
 TASK_MODE = os.environ.get("OLLAMA_KIT_TASK_MODE", "1") != "0"
 TASK_MODEL = "gemma3:gpu"
 REASONING_MODEL = "nemotron3:gpu"
+# Perfil opcional de máxima precisión: prioriza razonamiento y contexto amplio
+# por encima de velocidad. Se activa con --precise o OLLAMA_KIT_PRECISE=1.
+PRECISE_MODEL = "nemotron3:precise"
+PRECISE_CTX = 8192
+PRECISE_MAX_TOKENS = 1024
+PRECISE = os.environ.get("OLLAMA_KIT_PRECISE", "0") == "1"
 
 
 def use_reasoning(args=None) -> bool:
@@ -116,6 +122,22 @@ def default_model_for(cmd: str, args=None) -> str:
     if cmd in ("agent", "rag"):
         return TASK_MODEL
     return LOCAL_DEFAULT_MODELS.get(cmd, TASK_MODEL)
+
+
+def apply_precision_profile(args) -> bool:
+    """Activa razonamiento, temperatura 0 y contexto amplio cuando se pide."""
+    if not (getattr(args, "precise", False) or PRECISE):
+        return False
+    args.precise = True
+    args.reasoning = True
+    setattr(args, "temperature", 0.0)
+    if getattr(args, "ctx", 0) < PRECISE_CTX:
+        setattr(args, "ctx", PRECISE_CTX)
+    if getattr(args, "max_tokens", 0) < PRECISE_MAX_TOKENS:
+        setattr(args, "max_tokens", PRECISE_MAX_TOKENS)
+    if getattr(args, "model", None) in (None, TASK_MODEL, REASONING_MODEL):
+        args.model = PRECISE_MODEL
+    return True
 
 
 def print_reasoning(result) -> None:
@@ -468,8 +490,13 @@ def run_visible(cmd, shell=True, timeout=300):
 
 def build_payload(args, prompt, history=None):
     messages = []
-    if args.system:
-        messages.append({"role": "system", "content": args.system})
+    system_text = args.system
+    if getattr(args, "precise", False):
+        extra = ("Razona de forma concisa, en menos de 120 palabras, y luego "
+                 "responde con precisión y sin repetirte.")
+        system_text = (system_text + " " + extra) if system_text else extra
+    if system_text:
+        messages.append({"role": "system", "content": system_text})
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": prompt})
@@ -915,7 +942,11 @@ def cmd_act(args):
             {"role": "system", "content": system},
             {"role": "user", "content": text},
         ],
-        "options": {"temperature": 0, "num_ctx": 2048, "num_predict": max_tokens},
+        "options": {
+            "temperature": 0,
+            "num_ctx": getattr(args, "ctx", 2048),
+            "num_predict": getattr(args, "max_tokens", None) or max_tokens,
+        },
     }
     flag = thinking_for(model)
     if flag is not None:
@@ -1304,6 +1335,8 @@ def cmd_config(args):
         else:
             print("Modelos por defecto: chat/flow=gemma3:gpu, "
                   "razonamiento/agente/RAG=nemotron3:gpu, embeddings=qwen:gpu")
+    if getattr(args, "precise", False) or PRECISE:
+        print("PERFIL DE PRECISIÓN: nemotron3:precise, temp 0, ctx 8192, 1024 tokens")
     if EXTERNAL:
         print(f"Archivo de key: {PROVIDER_KEYFILES[PROVIDER]}")
     print(f"Overrides: {OVERRIDE}")
@@ -1345,6 +1378,26 @@ def cmd_config(args):
 # ---------------------------------------------------------------------------
 # RAG: índice local de fragmentos + embeddings con qwen:gpu
 # ---------------------------------------------------------------------------
+
+# Presupuesto conservador para evitar que el prompt se trunque silenciosamente.
+# 3 caracteres/token es una estimación prudente para texto en español.
+RAG_CHARS_PER_TOKEN = 3
+RAG_RESERVE_TOKENS = 64
+
+
+def rag_context_budget(args, system, question):
+    """Devuelve el máximo de caracteres de contexto que caben sin truncar."""
+    fixed = int((len(system) + len(question)) / RAG_CHARS_PER_TOKEN)
+    thinking = 128 if (use_reasoning(args) or thinking_for(args.model)) else 0
+    available = (args.ctx - args.max_tokens - fixed
+                 - RAG_RESERVE_TOKENS - thinking)
+    if available < 128:
+        raise SystemExit(
+            f"--ctx {args.ctx} insuficiente para {args.max_tokens} tokens de salida; "
+            "sube --ctx o baja --max-tokens."
+        )
+    return min(args.context_chars, int(available * RAG_CHARS_PER_TOKEN))
+
 
 def rag_load():
     try:
@@ -1573,6 +1626,7 @@ def cmd_rag_ask(args):
             scored.append((score, chunk))
     scored.sort(key=lambda item: item[0], reverse=True)
 
+    candidatos = len(scored)
     picked = []
     for score, chunk in scored:
         if any(chunk["path"] == c["path"]
@@ -1583,19 +1637,10 @@ def cmd_rag_ask(args):
         if len(picked) >= args.k:
             break
     if not picked:
-        raise SystemExit("Ningún fragmento supera --min-score.")
-
-    sections = []
-    used = 0
-    for i, (_, chunk) in enumerate(picked, 1):
-        header = f"[{i}] {chunk['path']}\n"
-        block = header + chunk["text"]
-        if used + len(block) > args.context_chars and sections:
-            break
-        sections.append(block)
-        used += len(block) + 4
-    picked = picked[:len(sections)]
-    context = "\n\n".join(sections)
+        raise SystemExit(
+            f"No lo encuentro en el índice: ningún fragmento supera "
+            f"--min-score={args.min_score}."
+        )
 
     system = (
         "Eres un asistente de documentación. Responde a la pregunta usando SOLO "
@@ -1605,8 +1650,28 @@ def cmd_rag_ask(args):
         "que ver con la pregunta. Cita los fragmentos con números entre corchetes, "
         "por ejemplo [1] o [2] (no escribas la letra n)."
     )
-    if not use_reasoning(args):
+    if getattr(args, "precise", False):
+        system += (
+            " Sé exhaustivo y preciso en la respuesta: apoya cada afirmación en un "
+            "fragmento citado con [n]. Si dos fragmentos se contradicen, indícalo "
+            "explícitamente en lugar de elegir uno arbitrariamente."
+        )
+    elif not use_reasoning(args):
         system += " Responde como una tarea: máximo 80 palabras, sin divagaciones."
+
+    effective_chars = rag_context_budget(args, system, question)
+
+    sections = []
+    used = 0
+    for i, (_, chunk) in enumerate(picked, 1):
+        header = f"[{i}] {chunk['path']}\n"
+        block = header + chunk["text"]
+        if used + len(block) > effective_chars and sections:
+            break
+        sections.append(block)
+        used += len(block) + 4
+    picked = picked[:len(sections)]
+    context = "\n\n".join(sections)
     user = f"Pregunta: {question}\n\nFragmentos recuperados:\n{context}"
     payload = {
         "model": args.model,
@@ -1625,7 +1690,8 @@ def cmd_rag_ask(args):
     if flag is not None:
         payload["think"] = flag
 
-    print(f"modelo: {args.model} | fragmentos: {len(picked)} "
+    print(f"modelo: {args.model} | fragmentos: {len(picked)}/{candidatos} "
+          f"| min-score {args.min_score} | presupuesto {effective_chars} chars "
           f"({data['embedding_model']} -> chat)\n")
     if args.no_stream:
         r = api("/api/chat", payload)
@@ -1718,7 +1784,8 @@ def cmd_run(args):
         )
         if "rag" not in intents:
             system += " No hay índice RAG disponible; no elijas rag."
-        router_model = REASONING_MODEL if use_reasoning(args) else TASK_MODEL
+        router_model = (PRECISE_MODEL if getattr(args, "precise", False)
+                        else REASONING_MODEL if use_reasoning(args) else TASK_MODEL)
         payload = {
             "model": router_model,
             "stream": False,
@@ -1727,7 +1794,11 @@ def cmd_run(args):
                 {"role": "system", "content": system},
                 {"role": "user", "content": text},
             ],
-            "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 24},
+            "options": {
+                "temperature": 0,
+                "num_ctx": getattr(args, "ctx", 2048),
+                "num_predict": 24,
+            },
         }
         flag = thinking_for(router_model)
         if flag is not None:
@@ -1757,7 +1828,9 @@ def cmd_run(args):
             model=args.act_model, dry_run=args.dry_run, free=False,
             yes=False, allow_dangerous=False,
             reasoning=getattr(args, "reasoning", False),
+            precise=getattr(args, "precise", False),
         )
+        apply_precision_profile(ns)
         cmd_act(ns)
         return
 
@@ -1766,11 +1839,15 @@ def cmd_run(args):
             question=text.split(),
             model=args.model or default_model_for("rag", args),
             embed_model=rag_data.get("embedding_model") or "qwen:gpu",
-            k=args.k, min_score=0.0, ctx=2048,
+            k=args.k,
+            min_score=0.10 if getattr(args, "precise", False) else 0.0,
+            ctx=2048,
             max_tokens=192 if not use_reasoning(args) else 384,
             context_chars=3600, no_stream=args.no_stream,
             reasoning=getattr(args, "reasoning", False),
+            precise=getattr(args, "precise", False),
         )
+        apply_precision_profile(ns)
         cmd_rag_ask(ns)
         return
 
@@ -1782,7 +1859,9 @@ def cmd_run(args):
         max_tokens=192 if not use_reasoning(args) else 512,
         think=True, no_stream=args.no_stream, stats=args.stats, format=None,
         reasoning=getattr(args, "reasoning", False),
+        precise=getattr(args, "precise", False),
     )
+    apply_precision_profile(ns)
     cmd_chat(ns)
 
 
@@ -2678,6 +2757,8 @@ def build_parser():
                    help="obsoleto: el razonamiento siempre se pide y se muestra")
     c.add_argument("--reasoning", action="store_true",
                    help="usar el modelo de respaldo nemotron3:gpu")
+    c.add_argument("--precise", action="store_true",
+                   help="máxima precisión: nemotron3:precise, temp 0, ctx 8192, 1024 tokens")
     c.add_argument("--no-stream", action="store_true")
     c.add_argument("--stats", action="store_true")
     c.add_argument("--format", help="JSON Schema de salida")
@@ -2745,6 +2826,8 @@ def build_parser():
     ag.add_argument("-t", "--temperature", type=float, default=0.0 if TASK_MODE else 0.2)
     ag.add_argument("--reasoning", action="store_true",
                     help="usar el modelo de respaldo nemotron3:gpu")
+    ag.add_argument("--precise", action="store_true",
+                    help="máxima precisión: nemotron3:precise, temp 0, ctx 8192, 1024 tokens")
     ag.add_argument("--bash-timeout", type=int, default=60,
                     help="segundos por comando de la herramienta bash")
     ag.add_argument("--yes", action="store_true",
@@ -2769,6 +2852,8 @@ def build_parser():
     a.add_argument("--catalog", help="ruta a otro catálogo JSON")
     a.add_argument("--reasoning", action="store_true",
                    help="usar nemotron3:gpu en lugar de gemma3:gpu")
+    a.add_argument("--precise", action="store_true",
+                   help="máxima precisión: nemotron3:precise, temp 0, ctx 8192, 1024 tokens")
     a.set_defaults(func=cmd_act)
 
     u = sub.add_parser("run", aliases=["do"], help="enrutador: decide entre act, rag y chat")
@@ -2784,6 +2869,8 @@ def build_parser():
     u.add_argument("--catalog", help="catálogo alternativo para act")
     u.add_argument("--reasoning", action="store_true",
                    help="usar nemotron3:gpu en el enrutador y las respuestas")
+    u.add_argument("--precise", action="store_true",
+                   help="máxima precisión: nemotron3:precise, temp 0, ctx 8192, 1024 tokens")
     u.set_defaults(func=cmd_run)
 
     b = sub.add_parser("bench", help="medir tokens/s")
@@ -2866,13 +2953,16 @@ def build_parser():
                          "con --reasoning (sintetiza mejor con fragmentos largos)")
     rq.add_argument("--embed-model", default="qwen:gpu")
     rq.add_argument("-k", "--top-k", dest="k", type=int, default=3)
-    rq.add_argument("--min-score", type=float, default=0.0)
+    rq.add_argument("--min-score", type=float, default=0.10,
+                    help="descarta fragmentos débiles (0 desactiva el filtro)")
     rq.add_argument("--ctx", type=int, default=2048)
     rq.add_argument("--max-tokens", type=int, default=192 if TASK_MODE else 384)
     rq.add_argument("--context-chars", type=int, default=3600)
     rq.add_argument("--no-stream", action="store_true")
     rq.add_argument("--reasoning", action="store_true",
                     help="usar nemotron3:gpu para sintetizar la respuesta")
+    rq.add_argument("--precise", action="store_true",
+                    help="máxima precisión: nemotron3:precise, temp 0, ctx 8192, 1024 tokens")
     rq.set_defaults(func=cmd_rag_ask)
 
     rl = rs.add_parser("list", help="ver el índice actual")
@@ -3151,6 +3241,7 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
     DEBUG = getattr(args, "debug", False) or bool(os.environ.get("OLLAMA_KIT_DEBUG"))
+    apply_precision_profile(args)
     if getattr(args, "model", None) is None:
         if PROVIDER in PROVIDER_DEFAULT_MODELS:
             args.model = PROVIDER_DEFAULT_MODELS[PROVIDER]

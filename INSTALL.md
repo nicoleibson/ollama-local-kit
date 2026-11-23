@@ -129,6 +129,12 @@ razonamiento: apunta al GGUF de `~/Documentos/ModelsIA/` y fija `num_gpu 43`,
 `num_ctx 2048` y `temperature 0.3`, igual que el modelo instalado. Permite
 recrearlo sin depender del directorio de importación original.
 
+`config/Modelfile.nemotron3-precise` es la receta del perfil de máxima precisión:
+el mismo GGUF con `temperature 0`, `num_ctx 8192` y `num_gpu 43`. Se crea con
+`ollama create nemotron3:precise -f config/Modelfile.nemotron3-precise` y se
+activa con `--precise` o `OLLAMA_KIT_PRECISE=1` en `chat`, `act`, `run`, `agent`
+y `rag ask`. `ocli config` indica si el perfil está activo.
+
 `qwen:gpu` se usa solo para embeddings. No lo llames con `/api/chat` ni
 `/api/generate`; usa `/api/embed` o `ocli embed` / `ocli rag`.
 
@@ -246,6 +252,8 @@ ocli config                                   # MODO: LOCAL, PERFIL: TAREAS, raz
 oagent --help                                 # debe mostrar --prompt y --reasoning
 oagent --prompt "di HOLA"                     # tarea única, sin REPL
 ocli chat -m nemotron3:gpu --no-stream "di HOLA"  # debe imprimir RAZONAMIENTO:
+OLLAMA_KIT_PRECISE=1 ocli config               # debe mostrar PERFIL DE PRECISIÓN
+ocli chat --precise --no-stream "di HOLA"      # nemotron3:precise (lento), razonamiento visible
 ofree config                                  # debe decir GRATIS: solo modelos locales
 oflow --help                                  # debe mostrar map/slide/classify/ask
 python3 -m py_compile ~/ollama-kit-gui.py      # sintaxis de la ventana Tkinter
@@ -281,7 +289,7 @@ ogemini config                                # PROVEEDOR: gemini
 `ocli doctor` debe terminar con **TODO CORRECTO**. El único aviso habitual es
 "ningún modelo cargado" cuando no hay ninguna inferencia en curso.
 
-`selftest.sh` comprueba sintaxis, catálogo, índice RAG, `doctor` y las ocho
+`selftest.sh` comprueba sintaxis, catálogo, índice RAG, `doctor` y las nueve
 pruebas de `~/ollama-local-kit/tests/` (sin inferencias). Si el repo está en otra
 ruta, indícala con `OLLAMA_KIT_TESTS=/ruta/tests bash ~/ollama-scripts/selftest.sh`.
 

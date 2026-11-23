@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-11-22 (vigésima primera tanda)
+
+- **Perfil de precisión opt-in**: `--precise` o `OLLAMA_KIT_PRECISE=1` en `chat`,
+  `act`, `run`, `agent` y `rag ask` usan `nemotron3:precise` con temperatura 0,
+  `num_ctx 8192`, `num_predict 1024` y `think`; el razonamiento sigue visible.
+  Un `-m` explícito se respeta. `ocli config` informa del perfil activo.
+- Corregida la delegación de `run`: `--precise` llega ahora a `act`, RAG y
+  `chat` (modelo, temp 0, ctx 8192, 1024 tokens y `min-score 0.10`), y el
+  enrutador usa también `nemotron3:precise`. `act` respeta el contexto y la
+  salida del perfil en lugar de sus valores fijos.
+- Nueva receta `config/Modelfile.nemotron3-precise` (mismo GGUF que el respaldo,
+  con contexto amplio y salida determinista); modelo creado y verificado con
+  `ollama show`.
+- **RAG anti-desbordamiento**: `--min-score` pasa a 0.10 por defecto; el contexto
+  se recorta con un presupuesto calculado desde `ctx`, `max_tokens`, system,
+  pregunta, reserva y razonamiento (3 caracteres/token), de modo que el prompt no
+  se trunque. La cabecera muestra fragmentos usados/totales, umbral y
+  presupuesto; sin fragmentos se responde `No lo encuentro en el índice`.
+- El prompt preciso pide una sola pasada de razonamiento, sin repetirse, y exige
+  citas `[n]` y aviso de contradicciones en RAG.
+- Nueva `tests/test-precision.py` (nueve pruebas versionadas en total) y
+  documentación en README, INSTALL y manual. Verificado con inferencia local:
+  620 tokens en 201 s (3,08 tok/s) y respuesta final con cita correcta. Sin APIs
+  de pago.
+
 ## 2026-11-22 (vigésima tanda)
 
 - Endurecido `ollama-scripts/gemma4-dgpu.sh`: `trap` separado para `EXIT`, `INT`
