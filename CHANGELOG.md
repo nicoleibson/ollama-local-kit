@@ -8,6 +8,9 @@
   `nemotron3:gpu` se usa con `--reasoning` (o `OLLAMA_KIT_TASK_MODE=0`) y
   `qwen3:06b` queda como opción rápida con `-m`. README, manual y copia
   instalada sincronizados.
+- Añadida la precedencia explícita del modelo en RAG (`-m` > `--precise` >
+  `--reasoning` > perfil tareas). Una prueba de humo mostró que preguntar a RAG
+  por su propio default mezcla secciones; se recomienda `ocli config` para eso.
 
 ## 2026-11-23 (vigésima novena tanda)
 

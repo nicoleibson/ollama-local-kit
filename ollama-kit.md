@@ -507,6 +507,13 @@ de RAG rápida con contexto (`-m qwen3:06b`). Como `OLLAMA_MAX_LOADED_MODELS=1`,
 embeddings a chat Ollama descarga `qwen:gpu` y carga el modelo chat; eso añade un
 par de segundos por consulta y es normal ver `ollama ps` con un solo modelo.
 
+**Precedencia del modelo:** `-m` explícito > `--precise` > `--reasoning` > perfil
+tareas. En perfil tareas el default es `gemma3:gpu`; `--precise` usa
+`nemotron3:precise` aunque no se pase `-m`; `--reasoning` usa `nemotron3:gpu` en
+agente y RAG. `--precise` y `--reasoning` fijan temperatura 0 y contexto amplio,
+pero un `-m` explícito conserva ese modelo. Para saber qué modelo está activo en
+cada rol, `ocli config` es más fiable que preguntárselo a RAG.
+
 **Verificado:** el manual y los 16 scripts generan unos 40 fragmentos (el número
 crece al ampliar este documento). Preguntas reales:
 
