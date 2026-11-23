@@ -1350,6 +1350,21 @@ def cmd_doctor(args):
     pressure = sh("sysctl -n vm.vfs_cache_pressure")
     results.append(check("vfs_cache_pressure", pressure.isdigit() and int(pressure) <= 50,
                          pressure or "n/d", warn_only=True))
+    rag_data = rag_load()
+    if rag_data["chunks"]:
+        changed, missing = rag_stale(rag_data)
+        detail = f"{len(rag_data['chunks'])} fragmentos"
+        if not rag_data.get("files"):
+            detail += "; sin huellas (reindexa para vigilar cambios)"
+        elif changed or missing:
+            detail += (f"; {len(changed) + len(missing)} archivo(s) desfasados "
+                       f"(usa 'ocli rag index ...')")
+        else:
+            detail += "; archivos al día"
+        results.append(check("índice RAG", not (changed or missing), detail,
+                             warn_only=True))
+    else:
+        results.append(check("índice RAG", False, "vacío (opcional)", warn_only=True))
     ps = api("/api/ps").get("models", [])
     if ps:
         ok = any(m.get("size_vram", 0) > 0 for m in ps)
@@ -1567,6 +1582,7 @@ def rag_load():
         "chunk_chars": 900,
         "overlap": 150,
         "chunks": [],
+        "files": {},
     }
 
 
@@ -1658,6 +1674,21 @@ def rag_in_roots(path, roots):
     return any(p == root or root in p.parents for root in roots)
 
 
+def rag_stale(data):
+    """Compara el índice con el disco: archivos cambiados y desaparecidos."""
+    changed, missing = [], []
+    for path, meta in (data.get("files") or {}).items():
+        try:
+            raw = Path(path).read_bytes()
+        except OSError:
+            missing.append(path)
+            continue
+        if (len(raw) != meta.get("size")
+                or hashlib.sha1(raw).hexdigest() != meta.get("hash")):
+            changed.append(path)
+    return changed, missing
+
+
 def rag_summary(data):
     by_file = {}
     for c in data["chunks"]:
@@ -1670,6 +1701,15 @@ def rag_summary(data):
         print(f"    {count:4}  {path}")
     if len(by_file) > 20:
         print(f"    ... y {len(by_file) - 20} archivos más")
+    changed, missing = rag_stale(data)
+    if changed or missing:
+        print(f"  aviso: {len(changed) + len(missing)} archivo(s) cambiaron o "
+              f"desaparecieron desde la última indexación; actualiza con "
+              f"'ocli rag index ...'")
+        for path in changed[:5]:
+            print(f"    cambió  {path}")
+        for path in missing[:5]:
+            print(f"    falta   {path}")
 
 
 def cmd_rag_index(args):
@@ -1686,15 +1726,22 @@ def cmd_rag_index(args):
 
     roots = [Path(p).expanduser().resolve() for p in args.paths]
     kept = [c for c in data["chunks"] if not rag_in_roots(c["path"], roots)]
+    meta_files = {path: meta for path, meta in (data.get("files") or {}).items()
+                  if not rag_in_roots(path, roots)}
 
     jobs = []
     for f in files:
         try:
-            text = f.read_text(encoding="utf-8", errors="replace")
+            raw = f.read_bytes()
         except OSError:
             continue
+        text = raw.decode("utf-8", "replace")
         if "\x00" in text:
             continue
+        meta_files[str(f)] = {
+            "size": len(raw),
+            "hash": hashlib.sha1(raw).hexdigest(),
+        }
         for start, part in rag_split(text, args.chunk_chars, args.overlap):
             jobs.append((str(f), start, part))
 
@@ -1713,6 +1760,7 @@ def cmd_rag_index(args):
     data["dim"] = len(vectors[0])
     data["chunk_chars"] = args.chunk_chars
     data["overlap"] = args.overlap
+    data["files"] = meta_files
     data["chunks"] = kept + [
         {"path": path, "start": start, "text": text, "vector": vec}
         for (path, start, text), vec in zip(jobs, vectors)

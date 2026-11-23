@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-23 (trigésima cuarta tanda)
+
+- **Detección de índice desfasado**: `rag index` guarda en el índice el tamaño y
+  un SHA-1 de cada archivo. `orag list` avisa de «N archivo(s) cambiaron o
+  desaparecieron desde la última indexación» y `ocli doctor` añade una línea
+  «índice RAG» con `archivos al día`, el número de desfasados o, en índices
+  antiguos, `sin huellas (reindexa para vigilar cambios)`. Nuevo
+  `tests/test-index.py` con embeddings simulados: detecta cambio con el mismo
+  tamaño, borrado, índice antiguo y reindexación limpia. 11/11 pruebas.
+
 ## 2026-11-23 (trigésima tercera tanda)
 
 - `--fast` ahora explica el choque cuando el perfil preciso viene del entorno:

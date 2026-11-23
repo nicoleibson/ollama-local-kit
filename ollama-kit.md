@@ -530,6 +530,12 @@ crece al ampliar este documento). Preguntas reales:
 Volver a indexar la misma ruta reemplaza solo los fragmentos de esa ruta; el resto
 del índice se conserva. `rag clear` borra todo.
 
+**Índice desfasado:** cada indexación guarda el tamaño y un hash de cada archivo.
+`orag list` y `ocli doctor` avisan si alguno cambió o desapareció desde entonces;
+`doctor` muestra `archivos al día` cuando no hay desfase. Tras editar el manual o
+los scripts, vuelve a ejecutar `ocli rag index` para que las respuestas citen el
+texto actual.
+
 Este índice es global: si trabajas con varios proyectos, conviene usar `oflow`
 (sección 12), que mantiene una búsqueda efímera por documento y no lo sobrescribe.
 
