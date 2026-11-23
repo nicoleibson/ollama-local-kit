@@ -769,6 +769,12 @@ obvios que el modelo omite (por ejemplo, `read` sin ruta cuando la carpeta tiene
 un único archivo) y devuelve los errores de herramienta al modelo en lugar de
 abortar. Si repite la misma acción, se detiene para no gastar tiempo.
 
+En la pestaña Agente de `ogui` el subprocess tiene un límite de 900 s (el resto
+de tareas usa 300 s): una tarea de análisis con `nemotron3:gpu` tarda 3-4 min y
+el límite genérico dejaba poco margen. La ventana sigue mostrando el comando
+antes de ejecutarlo y pide confirmación; nunca pasa `--yes` ni
+`--allow-dangerous`.
+
 | Herramienta | Qué hace | Permiso |
 |---|---|---|
 | `read` | Lee un archivo con números de línea (200 líneas por llamada) | automático |

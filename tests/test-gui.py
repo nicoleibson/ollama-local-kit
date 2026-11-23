@@ -130,7 +130,8 @@ def fake_cli(args, timeout=180):
     return "SALIDA SIMULADA: " + " ".join(map(str, args)) + "\n"
 
 def fake_run(argv=None, command=None, timeout=180):
-    calls["run"].append({"argv": list(argv) if argv else None, "command": command})
+    calls["run"].append({"argv": list(argv) if argv else None,
+                         "command": command, "timeout": timeout})
     if command == "date":
         return "fecha simulada\n"
     if argv and "act" in argv and "--dry-run" in argv:
@@ -298,6 +299,17 @@ with patch.object(mod, "cli_text", fake_cli), \
     assert any(c["argv"] and c["argv"][2] == "bench" for c in calls["run"]), calls["run"]
     app.bench_tab.refresh()
     assert len(app.bench_tab.tree.get_children()) == 2
+
+    # El agente necesita más margen que las tareas cortas: nemotron3:gpu tarda
+    # varios minutos en completar list -> read -> answer.
+    answers = iter([True])
+    app.agente_tab.prompt.set("analiza el codigo")
+    app.agente_tab.execute()
+    pump(app)
+    agent_runs = [c for c in calls["run"]
+                  if c["argv"] and "agent" in c["argv"]]
+    assert agent_runs and agent_runs[-1]["timeout"] == 900, agent_runs
+    assert "--yes" not in agent_runs[-1]["argv"], agent_runs[-1]
 
     # Precisión global: la casilla alcanza a todas las pestañas por entorno.
     app.precise_var.set(True)

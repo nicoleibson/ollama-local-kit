@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-23 (trigésima sexta tanda)
+
+- Verificación de extremo a extremo de la pestaña Agente de `ogui` sobre
+  `/home/onion/Escritorio/CursosIA`: confirmación previa, `list` inicial,
+  `read` del HTML, razonamiento visible y respuesta final, sin errores ni
+  respuesta vacía. Tiempo medido: ~215 s.
+- La pestaña Agente usa un límite de 900 s para el subprocess (antes 300 s, el
+  genérico de la GUI), para que una ejecución más lenta de `nemotron3:gpu` no
+  termine en `TIMEOUT`. El resto de pestañas conserva 300 s.
+- `tests/test-gui.py` comprueba el nuevo límite y que no se añade `--yes`.
+
 ## 2026-11-23 (trigésima quinta tanda)
 
 - **Agente más robusto** (fallos vistos en la GUI con `gemma3:q4`,

@@ -1504,8 +1504,12 @@ class AgenteTab(BaseTab):
                                    "¿Ejecutar esta tarea local?\n\n" + pretty_command(argv),
                                    parent=self.app):
             return
-        self.app.worker.submit("Agente · tarea única\n" + pretty_command(argv),
-                               lambda: run_process_text(argv, timeout=gui_timeout()), self.output)
+        # El bucle con nemotron3:gpu tarda 3-4 min (medido: ~215 s); el límite
+        # genérico de 300 s se quedaba corto en ejecuciones más lentas.
+        self.app.worker.submit(
+            "Agente · tarea única\n" + pretty_command(argv),
+            lambda: run_process_text(argv, timeout=900), self.output,
+        )
 
 
 class PromptsTab(BaseTab):
