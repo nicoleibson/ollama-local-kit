@@ -190,6 +190,12 @@ with patch.object(mod, "cli_text", fake_cli), \
     assert len(app.bench_tab.tree.get_children()) == 2
     assert app.model_names == ["gemma3:gpu", "nemotron3:gpu", "qwen:gpu"], app.model_names
     assert app.chat_tab.model_var.get() == "gemma3:gpu"
+    assert app.agente_tab.model_var.get() == "nemotron3:gpu"
+    agent_combo = app.agent_model_combos[0]
+    agent_values = list(agent_combo.cget("values"))
+    assert all(v == "automático" or v.startswith("nemotron3:")
+               for v in agent_values), agent_values
+    assert "gemma3:latest" not in agent_values, agent_values
     assert len(app.modelos_tab.tree.get_children()) == 3
     assert len(app.sesiones_tab.tree.get_children()) == 1
     assert len(app.flujos_tab.tree.get_children()) == 1

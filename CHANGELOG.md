@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-11-23 (trigésima séptima tanda)
+
+- **Causa del fallo reproducido:** sesión `CursosIA` con 12 mensajes
+  (`continua` + respuestas vacías), `gemma3:latest` (1B) y `--steps 1`, que
+  desactivaba el inventario inicial.
+- Al reanudar una sesión se descartan mensajes vacíos y `continua` repetidos, con
+  aviso del número eliminado y recordatorio de `--new-session`.
+- El inventario inicial se ejecuta también con `--steps 1`. Si el nombre de la
+  sesión coincide con una carpeta de la raíz o de su primer nivel, se lee
+  automáticamente el archivo de código más probable (p. ej. sesión `CursosIA` →
+  `Escritorio/CursosIA/cursos.html`).
+- **Modelos pequeños:** se añaden `gemma3:latest`, `gemma3:ctx*` y `qwen:latest`
+  a la lista avisada. La GUI ya no ofrece modelos de 1B en la pestaña Agente:
+  solo `nemotron3:*` de 4B. Si se fuerzan desde la CLI y falla el JSON, se muestra
+  la evidencia leída y `ocli code explain ARCHIVO -m nemotron3:gpu`, sin
+  inventar un análisis.
+- Prompt del agente endurecido: no pedir instrucciones, no repetir el esquema en
+  `thought`, `answer` siempre con texto real. Respuestas directas de fallback se
+  limpian de bloques `<think>`.
+- Manual, README y solución de problemas actualizados; pruebas nuevas en
+  `test-agent.py` (limpieza de sesión, selector por sesión, inventario con un
+  paso, aviso de `gemma3:latest`, fallback determinista) y `test-gui.py` (combo
+  restringido a Nemotron).
+
 ## 2026-11-23 (trigésima sexta tanda)
 
 - Verificación de extremo a extremo de la pestaña Agente de `ogui` sobre

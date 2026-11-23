@@ -1442,9 +1442,9 @@ class AgenteTab(BaseTab):
         # pequeños (gemma3:q4, gemma3:1b...) se quedan en respuestas vacías.
         self.model_var = tk.StringVar(value=REASONING_MODEL)
         combo = ttk.Combobox(form, textvariable=self.model_var, width=20, state="readonly",
-                             values=["automático", REASONING_MODEL, DEFAULT_MODEL])
+                             values=["automático", REASONING_MODEL])
         combo.grid(row=1, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
-        app.optional_model_combos.append(combo)
+        app.agent_model_combos.append(combo)
         ttk.Label(form, text="recomendado: nemotron3:gpu",
                   foreground="#7f8c96").grid(row=1, column=3, sticky="w", pady=(6, 0))
         self.reasoning_var = tk.BooleanVar()
@@ -1735,6 +1735,7 @@ class KitGUI(tk.Tk):
         self.model_names: list[str] = []
         self.model_combos: list[ttk.Combobox] = []
         self.optional_model_combos: list[ttk.Combobox] = []
+        self.agent_model_combos: list[ttk.Combobox] = []
         self._chain: list = []
         self._chain_index = 0
 
@@ -1810,6 +1811,16 @@ class KitGUI(tk.Tk):
             combo.configure(values=optional)
             if current not in optional:
                 combo.set("automático")
+        # El bucle del agente solo funciona de forma fiable con los modelos
+        # Nemotron de 4B; los de 1B devuelven JSON vacío o piden instrucciones.
+        agent_values = [v for v in values
+                        if v.startswith("nemotron3:") and ":dgpu" not in v]
+        agent_values = ["automático"] + (agent_values or [REASONING_MODEL])
+        for combo in self.agent_model_combos:
+            current = combo.get()
+            combo.configure(values=agent_values)
+            if current not in agent_values:
+                combo.set(REASONING_MODEL)
 
     def refresh_all(self) -> None:
         if self.worker.busy:

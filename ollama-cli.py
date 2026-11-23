@@ -2154,19 +2154,26 @@ def agent_system(root):
         listing = ""
     extra = f" Contenido de la raíz: {listing}." if listing else ""
     return (
-        "Eres un agente de programación en una terminal. Tienes acceso real a los "
-        f"archivos de {root} con las herramientas list, read, grep y rag; nunca "
-        "digas que no puedes leer archivos ni pidas que te peguen el código. "
-        f"Trabajas SOLO dentro de esa carpeta.{extra} "
-        "Devuelve SOLO un objeto JSON, sin markdown ni texto fuera del JSON, con "
-        "esta forma: {\"thought\":\"frase breve\",\"tool\":\"...\",\"args\":{...},\"answer\":\"...\"}. "
-        "Para analizar un proyecto empieza con list {\"path\":\".\"} y luego read "
-        "del archivo relevante. Elige tool=answer cuando ya tengas la respuesta y "
-        "rellena siempre 'answer' con el texto final. Para write, edit o bash el "
-        "usuario deberá confirmar antes de ejecutar. Args por herramienta: "
+        "Eres un agente de programación en una terminal local. Trabajas SOLO "
+        f"dentro de {root}. Tienes herramientas reales: list, read, grep y rag. "
+        "Úsalas para investigar los archivos; nunca digas que no puedes leerlos "
+        "ni pidas que te peguen el código.{extra} "
+        "Tu salida es SIEMPRE un objeto JSON válido, sin markdown ni texto fuera "
+        "del JSON. No expliques el formato, no pidas instrucciones y no repitas "
+        "el esquema: las instrucciones ya están aquí. "
+        "Campos: 'thought' = una frase corta, SIN llaves ni JSON; "
+        "'tool' = una de list|read|grep|rag|write|edit|bash|answer; "
+        "'args' = objeto con los argumentos de esa herramienta; "
+        "'answer' = el texto final para el usuario. "
+        "Para analizar código haz primero list {\"path\":\".\"} y después read del "
+        "archivo relevante. Cuando ya tengas la respuesta elige tool=answer y "
+        "rellena 'answer' con texto real; deja 'answer' vacío solo si estás "
+        "llamando a otra herramienta. Nunca respondas con 'answer' vacío ni con un "
+        "'thought' que contenga llaves. "
+        "Para write, edit o bash el usuario confirmará antes de ejecutar. Args: "
         "read {path, start?, lines?}; list {path?}; grep {pattern, path?, max?}; "
         "rag {query, k?}; write {path, content}; edit {path, old, new}; "
-        "bash {command}. No propongas rutas absolutas ni que salgan de la carpeta de trabajo."
+        "bash {command}. No propongas rutas absolutas ni fuera de la carpeta de trabajo."
     )
 
 
@@ -2416,8 +2423,103 @@ AGENT_INVENTORY_HINTS = re.compile(
 
 
 AGENT_WEAK_MODELS = frozenset({
-    "gemma3:q4", "gemma3:1b", "lfm25:350m", "bonsai:q1", "qwen3:06b",
+    "gemma3:q4", "gemma3:1b", "gemma3:latest", "gemma3:ctx4k", "gemma3:ctx8k",
+    "lfm25:350m", "bonsai:q1", "qwen3:06b", "qwen:latest",
 })
+
+
+CODE_EXTS = frozenset({
+    ".py", ".html", ".js", ".ts", ".jsx", ".tsx", ".css", ".sh", ".md",
+    ".json", ".c", ".cpp", ".h", ".java", ".go", ".rs", ".sql",
+})
+SKIP_DIRS = AGENT_BLOCKED | frozenset({
+    ".cache", ".local", ".config", ".npm", ".cargo", ".rustup", ".vscode",
+    ".antigravity", ".android", ".anydesk", "node_modules", "__pycache__",
+})
+
+
+def agent_pick_code_file(root, session=""):
+    """Elige un archivo de código probable; el nombre de sesión da la pista."""
+    root = Path(root)
+    target = root
+
+    def subdirs(base):
+        try:
+            return [p for p in base.iterdir()
+                    if p.is_dir() and not p.name.startswith(".")
+                    and p.name not in SKIP_DIRS]
+        except OSError:
+            return []
+
+    if session:
+        children = subdirs(root)
+        exact = [p for p in children if p.name.lower() == session.lower()]
+        # La sesión puede apuntar a una carpeta de primer o segundo nivel.
+        if len(exact) != 1:
+            for child in children:
+                exact += [p for p in subdirs(child)
+                          if p.name.lower() == session.lower()]
+        if len(exact) == 1:
+            target = exact[0]
+        else:
+            partial = [p for p in children if p.name.lower() in session.lower()]
+            if len(partial) != 1:
+                for child in children:
+                    partial += [p for p in subdirs(child)
+                                if p.name.lower() in session.lower()]
+            if partial:
+                target = max(partial, key=lambda item: len(item.name))
+    found = []
+    for dirpath, dirnames, filenames in os.walk(target):
+        depth = len(Path(dirpath).relative_to(target).parts)
+        if depth >= 2:
+            dirnames[:] = []
+            continue
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d not in SKIP_DIRS]
+        for name in filenames:
+            if name.startswith(".") or Path(name).suffix.lower() not in CODE_EXTS:
+                continue
+            path = Path(dirpath) / name
+            try:
+                if path.stat().st_size > 500_000:
+                    continue
+                mtime = path.stat().st_mtime_ns
+            except OSError:
+                continue
+            found.append((depth, -mtime, path))
+    if not found:
+        return None
+    # En una raíz muy amplia (p. ej. /home/onion) no adivinar un archivo: sin
+    # pista de sesión, escoger el más reciente daría lugar a respuestas erróneas.
+    if target == root:
+        try:
+            if len(list(root.iterdir())) > 20:
+                return None
+        except OSError:
+            return None
+    found.sort(key=lambda item: item[:2])
+    return found[0][2]
+
+
+def agent_clean_history(messages):
+    """Descarta mensajes vacíos y 'continua' repetidos de sesiones fallidas."""
+    out = []
+    filler = {"continua", "continuar", "sigue", "seguir", "ok", "vale", "si"}
+    for item in messages or []:
+        if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"):
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        role = item["role"]
+        if (role == "user" and content.lower().strip(".,!? ") in filler
+                and (not out or out[-1]["role"] == "user")):
+            continue
+        if out and out[-1]["role"] == role and out[-1]["content"] == content:
+            continue
+        out.append({"role": role, "content": content})
+    return out
 
 
 def agent_needs_inventory(text):
@@ -2449,8 +2551,9 @@ def agent_decide(messages, args, used_tool):
     tool = decision.get("tool")
     answer = str(decision.get("answer") or "").strip()
     if tool == "answer" and not answer:
-        nudge = ("Tu JSON llegó sin texto en 'answer'. Devuelve otro objeto JSON; "
-                 "si respondes, rellena 'answer' con la respuesta.")
+        nudge = ("'answer' llegó vacío: eso no es una respuesta. No escribas el "
+                 "esquema ni pidas instrucciones. Elige una herramienta (list, "
+                 "read, grep, rag) o rellena 'answer' con el texto final.")
         if not used_tool:
             nudge += (" Tienes herramientas: usa list/read/grep para mirar los "
                       "archivos antes de responder.")
@@ -2461,6 +2564,58 @@ def agent_decide(messages, args, used_tool):
                 {"role": "user", "content": nudge},
             ], args)
     return decision, stats
+
+
+def agent_answer_direct(args, line, history):
+    """Último recurso: respuesta en texto plano con la evidencia ya reunida."""
+    evidence = ""
+    for item in reversed(history):
+        content = str(item.get("content") or "")
+        if item.get("role") == "user" and content.startswith("RESULTADO de "):
+            evidence = content
+            break
+    if args.model in AGENT_WEAK_MODELS:
+        # Un 1B no resume de forma fiable: mostrar la evidencia es más honesto
+        # que dejar que invente un análisis.
+        if evidence.startswith("RESULTADO de read:"):
+            lines = evidence.splitlines()
+            cabecera = lines[1].strip() if len(lines) > 1 else "(archivo)"
+            muestra = "\n".join(lines[2:5]).strip()
+            ruta = cabecera.split(":")[0] if ":" in cabecera else cabecera
+            return (f"El modelo {args.model} no pudo resumir el código. "
+                    f"Archivo leído: {cabecera}.\n{muestra}\n\n"
+                    f"Para analizarlo con fiabilidad: "
+                    f"ocli code explain {ruta} -m nemotron3:gpu")
+        return (f"El modelo {args.model} no pudo devolver una respuesta válida. "
+                "Usa -m nemotron3:gpu o 'ocli code explain ARCHIVO'.")
+    prompt = (
+        "Responde en español, en texto plano y breve (máximo 120 palabras), "
+        "sin JSON, sin markdown y sin pedir más instrucciones. "
+        "Usa SOLO la información del resultado de herramientas que se muestra "
+        "abajo. Si no basta para analizar el código, dilo y propón una ruta "
+        f"concreta de la carpeta.\n\nPetición: {line}\n\n"
+        f"Resultado disponible:\n{evidence[:6000] or '(ninguno)'}"
+    )
+    payload = {
+        "model": args.model,
+        "stream": False,
+        "messages": [{"role": "user", "content": prompt}],
+        "options": {
+            "temperature": args.temperature,
+            "num_ctx": args.ctx,
+            "num_predict": min(256, args.max_tokens),
+        },
+        "think": False,
+    }
+    try:
+        r = api("/api/chat", payload, timeout=600)
+    except SystemExit:
+        return ""
+    if r.get("error"):
+        return ""
+    text = str(r.get("message", {}).get("content") or "").strip()
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    return text.strip("`").strip()
 
 
 def cmd_agent(args):
@@ -2478,6 +2633,12 @@ def cmd_agent(args):
     if session and not args.new_session:
         saved = session_load(session)
         history = [m for m in saved["messages"] if m.get("role") != "system"]
+        cleaned = agent_clean_history(history)
+        dropped = len(history) - len(cleaned)
+        if dropped:
+            print(f"Sesión '{session}': se descartaron {dropped} mensajes vacíos "
+                  f"o repetidos. Si quieres empezar de cero, usa --new-session.")
+        history = cleaned
         if history:
             print(f"Sesión '{session}': {len(history)} mensajes recuperados.")
     undo = []
@@ -2557,7 +2718,8 @@ def cmd_agent(args):
 
         history.append({"role": "user", "content": line})
         used_tool = False
-        if agent_needs_inventory(line) and args.steps >= 2:
+        answered = False
+        if agent_needs_inventory(line):
             try:
                 listing = agent_list(root, {})
             except SystemExit:
@@ -2572,6 +2734,25 @@ def cmd_agent(args):
                 used_tool = True
                 print("[list] inventario inicial", flush=True)
                 print(listing[:4000])
+            picked = agent_pick_code_file(root, session or "")
+            if picked is not None:
+                try:
+                    contenido = agent_read(root, {
+                        "path": str(picked.relative_to(root)), "lines": 80,
+                    })
+                except (SystemExit, ValueError):
+                    contenido = ""
+                if contenido:
+                    decision = {"thought": "Leo el archivo de código probable.",
+                                "tool": "read",
+                                "args": {"path": str(picked.relative_to(root))}}
+                    history.append({"role": "assistant",
+                                    "content": json.dumps(decision, ensure_ascii=False)})
+                    history.append({"role": "user",
+                                    "content": f"RESULTADO de read:\n{contenido[:6000]}"})
+                    used_tool = True
+                    print(f"[read] archivo seleccionado: {picked.relative_to(root)}",
+                          flush=True)
         last_action = None
         for _ in range(max(1, args.steps)):
             messages = [{"role": "system", "content": agent_system(root)}] + history
@@ -2579,8 +2760,16 @@ def cmd_agent(args):
                 decision, stats = agent_decide(messages, args, used_tool)
             except SystemExit as exc:
                 print(f"(el agente no devolvió una decisión válida: {exc})")
-                print("(prueba '-m nemotron3:gpu', sube --max-tokens o reformula "
-                      "la tarea)")
+                print("(prueba '-m nemotron3:gpu', sube --max-tokens o "
+                      "reformula la tarea)")
+                if single:
+                    directo = agent_answer_direct(args, line, history)
+                    if directo:
+                        print("(respuesta directa: el modelo no pudo generar el "
+                              "JSON del agente)")
+                        print(directo)
+                        history.append({"role": "assistant", "content": directo})
+                        answered = True
                 break
             tool = decision.get("tool")
             answer = str(decision.get("answer") or "").strip()
@@ -2591,6 +2780,7 @@ def cmd_agent(args):
                 if answer:
                     print(answer)
                     history.append({"role": "assistant", "content": answer})
+                    answered = True
                 else:
                     print("(el modelo no devolvió respuesta. Prueba con "
                           "'-m gemma3:gpu' o '-m nemotron3:gpu', o reformula "
@@ -2617,6 +2807,13 @@ def cmd_agent(args):
             history.append({"role": "user", "content": f"RESULTADO de {tool}:\n{result[:6000]}"})
         else:
             print(f"Se alcanzó el límite de {args.steps} pasos. Reformula o usa /clear.")
+        if single and not answered:
+            directo = agent_answer_direct(args, line, history)
+            if directo:
+                print("(respuesta directa: el agente agotó los pasos sin dar un "
+                      "JSON con 'answer')")
+                print(directo)
+                history.append({"role": "assistant", "content": directo})
         history = history[-max(4, args.history):]
         if session:
             session_save(session, args.model, history, kind="agent",

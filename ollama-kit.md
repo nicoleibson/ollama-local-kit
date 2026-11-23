@@ -764,10 +764,24 @@ y así el presupuesto `--max-tokens` (512) se dedica al JSON completo.
 
 **Arranque con inventario:** si la petición habla de analizar, revisar, leer o
 explicar archivos, el agente ejecuta primero un `list` local de la raíz (sin
-llamar al modelo) para partir de datos reales. También completa argumentos
-obvios que el modelo omite (por ejemplo, `read` sin ruta cuando la carpeta tiene
-un único archivo) y devuelve los errores de herramienta al modelo en lugar de
-abortar. Si repite la misma acción, se detiene para no gastar tiempo.
+llamar al modelo), incluso con `--steps 1`. Si el nombre de `--session` coincide
+con una carpeta de la raíz o de su primer nivel (por ejemplo, sesión `CursosIA`
+y carpeta `Escritorio/CursosIA`), lee automáticamente el archivo de código más
+probable de esa carpeta. También completa argumentos obvios que el modelo omite
+(por ejemplo, `read` sin ruta cuando la carpeta tiene un único archivo) y
+devuelve los errores de herramienta al modelo en lugar de abortar. Si repite la
+misma acción, se detiene para no gastar tiempo.
+
+**Modelos pequeños:** `gemma3:latest`, `gemma3:q4`, `gemma3:gpu` y los demás
+modelos de 1B no son fiables en este bucle: devuelven `answer` vacío o repiten el texto del
+esquema en lugar de usar las herramientas. La pestaña Agente de `ogui` solo
+ofrece modelos `nemotron3:*` de 4B. Si se fuerza un modelo pequeño desde la CLI,
+avisa al arrancar; si además falla el JSON, la CLI no inventa un análisis: muestra
+la evidencia leída y sugiere `ocli code explain ARCHIVO -m nemotron3:gpu`.
+
+**Sesiones:** al reanudar una sesión se descartan mensajes vacíos y `continua`
+repetidos de intentos anteriores; la CLI indica cuántos se quitaron y recuerda
+`--new-session` para empezar de cero.
 
 En la pestaña Agente de `ogui` el subprocess tiene un límite de 900 s (el resto
 de tareas usa 300 s): una tarea de análisis con `nemotron3:gpu` tarda 3-4 min y
@@ -1199,6 +1213,8 @@ como experimento documentado, no como modelo de uso diario.
 | `gemma4:dgpu*` da error de memoria en el servicio principal | Esos tags son de la R7 260X: la CLI los rechaza fuera del puerto 11435; usa `odgpu --safe-fit` (chat) o un tag `:gpu` |
 | El agente no responde o responde vacío | Modelo demasiado pequeño para el JSON del bucle: usa `-m nemotron3:gpu`; para análisis de un archivo concreto, `ocode explain ARCHIVO` |
 | El agente repite la misma herramienta | Se detiene solo; reformula con una ruta o pregunta más concreta, o sube `--steps` |
+| El agente pide las instrucciones en JSON o contesta con el esquema | Modelo de 1B (`gemma3:latest`, `gemma3:gpu`, `qwen3:06b`…): usa `nemotron3:gpu`; en `ogui` esos modelos ya no se ofrecen en Agente |
+| La sesión del agente crece con `continua` y respuestas vacías | Se limpian al cargar; usa `--new-session` o deja el campo Sesión vacío |
 | Gemma4 devuelve `response` vacío | Está gastando los tokens en `<think>`; la CLI y `odgpu` envían `think:false` |
 | El enrutador `run` elige mal | Usar `orun --intent act\|rag\|chat ...` o revisar con `--dry-run` |
 | El chat con `--session` olvida cosas | El historial supera `num_ctx=2048`; usa `--new-session` o conversaciones más cortas |

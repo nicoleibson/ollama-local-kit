@@ -128,7 +128,8 @@ with contextlib.redirect_stdout(out):
     m.cmd_agent(one)
 assert "El HTML lista cursos." in out.getvalue(), out.getvalue()
 
-both_empty = iter([{"thought": "vacío", "tool": "answer", "args": {}}] * 2)
+both_empty = iter([{"thought": "vacío", "tool": "answer", "args": {}}] * 2
+                  + [{"answer": "sin respuesta directa"}])
 m.api = lambda path, payload=None, **kw: {
     "message": {"content": json.dumps(next(both_empty))}, "eval_count": 1}
 out = io.StringIO()
@@ -175,10 +176,21 @@ assert m3.agent_normalize(root, "read", {"path": "."}, "x")["path"] == "nota.txt
 assert m3.agent_normalize(root, "rag", {}, "mi pregunta")["query"] == "mi pregunta"
 assert m3.agent_normalize(root, "grep", {"pattern": "hola"}) == {"pattern": "hola"}
 
+# Si el nombre de sesión coincide con una carpeta, se lee su archivo de código.
+pick_root = tempdir(prefix="agente-pick-")
+(pick_root / "ProyectoX").mkdir()
+(pick_root / "ProyectoX" / "main.py").write_text("print('hola')\n")
+(pick_root / "ProyectoX" / "notas.txt").write_text("ignorar\n")
+pick = m3.agent_pick_code_file(pick_root, "ProyectoX")
+assert pick is not None and pick.name == "main.py", pick
+assert m3.agent_pick_code_file(pick_root, "") is not None
+assert m3.agent_pick_code_file(pick_root, "ProyectoX-prueba") is not None
+
 # Un error de herramienta se devuelve al modelo; una acción repetida detiene.
 repeat = iter([
     {"thought": "leo", "tool": "read", "args": {"path": "noexiste.txt"}},
     {"thought": "otra vez", "tool": "read", "args": {"path": "noexiste.txt"}},
+    {"answer": "sin respuesta directa"},
 ])
 m.api = lambda path, payload=None, **kw: {
     "message": {"content": json.dumps(next(repeat))}, "eval_count": 1}
@@ -202,5 +214,51 @@ out = io.StringIO()
 with contextlib.redirect_stdout(out):
     m.cmd_agent(weak)
 assert "AVISO: gemma3:q4" in out.getvalue(), out.getvalue()
+
+# Sesiones con mensajes vacíos o 'continua' repetidos se limpian al cargar.
+sucio = [
+    {"role": "user", "content": "continua"},
+    {"role": "assistant", "content": ""},
+    {"role": "user", "content": "continua"},
+    {"role": "user", "content": "que entiendes del codigo?"},
+]
+limpio = m3.agent_clean_history(sucio)
+assert len(limpio) == 1 and limpio[0]["content"] == "que entiendes del codigo?", limpio
+assert "gemma3:latest" in m3.AGENT_WEAK_MODELS
+
+# Con --steps 1 también se toma el inventario inicial de la carpeta.
+m.api = lambda path, payload=None, **kw: {
+    "message": {"content": json.dumps(
+        {"thought": "ya", "tool": "answer", "args": {},
+         "answer": "El archivo dice hola"})},
+    "eval_count": 1}
+one_step = m.build_parser().parse_args(
+    ["agent", "--root", str(root), "--prompt", "analiza el codigo", "--steps", "1"])
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    m.cmd_agent(one_step)
+assert "[list] inventario inicial" in out.getvalue(), out.getvalue()
+assert "El archivo dice hola" in out.getvalue(), out.getvalue()
+
+# El aviso alcanza también a gemma3:latest (1B), no solo a gemma3:q4.
+weak_latest = m.build_parser().parse_args(
+    ["agent", "--root", str(root), "--prompt", "di OK", "-m", "gemma3:latest"])
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    m.cmd_agent(weak_latest)
+assert "AVISO: gemma3:latest" in out.getvalue(), out.getvalue()
+
+# Con un modelo pequeño el fallback no inventa un análisis: muestra evidencia.
+m.api = lambda path, payload=None, **kw: {
+    "message": {"content": "no es json"}, "eval_count": 1}
+weak_bad = m.build_parser().parse_args(
+    ["agent", "--root", str(root), "--prompt", "analiza el codigo",
+     "--steps", "1", "-m", "gemma3:latest"])
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    m.cmd_agent(weak_bad)
+texto = out.getvalue()
+assert "gemma3:latest no pudo" in texto, texto
+assert "nemotron3:gpu" in texto, texto
 
 print("Herramientas y salvaguardas: TODO OK")

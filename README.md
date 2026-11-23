@@ -28,7 +28,7 @@ driver, Ollama coloca el modelo entero en una sola GPU. Dos instancias daban
 
 | Modelo | Uso | Rendimiento medido |
 |---|---|---|
-| `gemma3:gpu` | **principal**: chat, `oflow`, acciones, RAG, enrutador y tests (Q6_K uncensored); en el agente se recomienda `nemotron3:gpu` | 7,8 tok/s |
+| `gemma3:gpu` | **principal**: chat, `oflow`, acciones, RAG, enrutador y tests (Q6_K uncensored); el agente usa `nemotron3:gpu` (4B) | 7,8 tok/s |
 | `gemma3:q4` | alternativa rápida (Q4_K_M) | 9,3–9,8 tok/s |
 | `nemotron3:gpu` | **respaldo** de razonamiento (`--reasoning` o `OLLAMA_KIT_TASK_MODE=0`) y `act --free` | ~2,6–3,5 tok/s |
 | `nemotron3:precise` | **máxima precisión** (`--precise`): temp 0, ctx 8192, 1024 tokens | ~3,1 tok/s |
@@ -197,8 +197,9 @@ Los comandos de `act` muestran `[->]`, duración y `[OK]`/`[X] exit N`. Todo que
 
 Por defecto el kit trabaja en **perfil tareas**: el modelo recibe instrucciones
 de respuesta corta y verificable en vez de mantener conversaciones largas.
-`gemma3:gpu` atiende `chat`, `act`, `run`, RAG y los flujos; para el bucle del
-agente conviene `nemotron3:gpu`, porque los modelos de 1B fallan el JSON;
+`gemma3:gpu` atiende `chat`, `act`, `run`, RAG y los flujos; el bucle del agente
+requiere `nemotron3:gpu` (4B), porque los modelos de 1B devuelven JSON vacío o
+piden instrucciones; la pestaña Agente de `ogui` solo ofrece modelos Nemotron;
 `qwen:gpu` sigue en embeddings. `ocli config` lo resume así:
 
 ```text
