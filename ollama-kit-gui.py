@@ -21,10 +21,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 HOME = Path.home()
-CLI_PATH = Path(os.environ.get("OLLAMA_KIT_CLI", str(HOME / "ollama-cli.py")))
+KIT_ROOT = Path("/ia-local/project/ollama-local-kit")
+CLI_PATH = Path(os.environ.get("OLLAMA_KIT_CLI", str(KIT_ROOT / "ollama-cli.py")))
 if not CLI_PATH.is_file():
-    CLI_PATH = HOME / "ollama-local-kit" / "ollama-cli.py"
-CATALOG_PATH = Path(os.environ.get("OLLAMA_COMMANDS", str(HOME / "ollama-commands.json")))
+    CLI_PATH = Path(__file__).resolve().parent / "ollama-cli.py"
+CATALOG_PATH = Path(os.environ.get("OLLAMA_COMMANDS", str(KIT_ROOT / "ollama-commands.json")))
 SESSIONS_DIR = Path(os.environ.get("OLLAMA_SESSIONS_DIR", str(HOME / ".ollama-sessions")))
 FLOW_DIR = Path(os.environ.get("OLLAMA_FLOW_DIR", str(HOME / ".ollama-flow")))
 DEBUG_LOG = HOME / ".ollama-debug.log"
