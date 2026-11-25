@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory() as tmp:
         "_comment": "x",
         "date": {"cmd": "date", "desc": "fecha"},
         "ollama_bench": {"cmd": "ocli bench", "desc": "inferencia"},
-        "git_log": {"cmd": "git -C /home/onion/ollama-local-kit log --oneline -5",
+        "git_log": {"cmd": "git -C /ia-local/project/ollama-local-kit log --oneline -5",
                     "desc": "commits"},
     }))
     with patch.object(mod, "CATALOG_PATH", catalog):
@@ -126,7 +126,7 @@ def fake_cli(args, timeout=180):
     if args and args[0] == "config":
         return "PROVEEDOR: ollama\nMODO: LOCAL\n"
     if args[:2] == ["act", "--list"]:
-        return "Catálogo: /home/onion/ollama-commands.json\n  date   date\n"
+        return "Catálogo: /ia-local/project/ollama-local-kit/ollama-commands.json\n  date   date\n"
     return "SALIDA SIMULADA: " + " ".join(map(str, args)) + "\n"
 
 def fake_run(argv=None, command=None, timeout=180):
@@ -263,7 +263,7 @@ with patch.object(mod, "cli_text", fake_cli), \
 
     # Code: preparar prompt sin llamar al modelo de verdad.
     app.acciones_tab.code_action.set("review")
-    app.acciones_tab.code_path.set("/home/onion/ollama-cli.py")
+    app.acciones_tab.code_path.set("/ia-local/project/ollama-local-kit/ollama-cli.py")
     app.acciones_tab.code_prepare()
     pump(app)
     assert any(c["argv"] and "code" in c["argv"] and "--dry-run" in c["argv"]

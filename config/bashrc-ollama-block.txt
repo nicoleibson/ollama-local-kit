@@ -1,24 +1,24 @@
 # >>> ollama-cli personal >>>
-alias ocli='$HOME/ollama-cli.py'
-alias ochat='$HOME/ollama-cli.py chat'
-alias oact='$HOME/ollama-cli.py act'
-alias orag='$HOME/ollama-cli.py rag'
-alias orun='$HOME/ollama-cli.py run'
-alias owatch='$HOME/ollama-cli.py watch'
-alias oprompt='$HOME/ollama-cli.py prompt'
-alias osess='$HOME/ollama-cli.py session'
-alias odgpu='$HOME/ollama-scripts/gemma4-dgpu.sh'
-alias ocode='$HOME/ollama-cli.py code'
-alias odebug='$HOME/ollama-cli.py debug'
-alias oagent='$HOME/ollama-cli.py agent'
-alias oflow='$HOME/ollama-cli.py flow'
-alias ogui='$HOME/ollama-kit-gui.py'
-alias ocodex='/home/onion/ollama-scripts/codex-local.sh'
+alias ocli='/ia-local/project/ollama-local-kit/ollama-cli.py'
+alias ochat='/ia-local/project/ollama-local-kit/ollama-cli.py chat'
+alias oact='/ia-local/project/ollama-local-kit/ollama-cli.py act'
+alias orag='/ia-local/project/ollama-local-kit/ollama-cli.py rag'
+alias orun='/ia-local/project/ollama-local-kit/ollama-cli.py run'
+alias owatch='/ia-local/project/ollama-local-kit/ollama-cli.py watch'
+alias oprompt='/ia-local/project/ollama-local-kit/ollama-cli.py prompt'
+alias osess='/ia-local/project/ollama-local-kit/ollama-cli.py session'
+alias odgpu='/ia-local/project/ollama-local-kit/ollama-scripts/gemma4-dgpu.sh'
+alias ocode='/ia-local/project/ollama-local-kit/ollama-cli.py code'
+alias odebug='/ia-local/project/ollama-local-kit/ollama-cli.py debug'
+alias oagent='/ia-local/project/ollama-local-kit/ollama-cli.py agent'
+alias oflow='/ia-local/project/ollama-local-kit/ollama-cli.py flow'
+alias ogui='/ia-local/project/ollama-local-kit/ollama-kit-gui.py'
+alias ocodex='/ia-local/project/ollama-local-kit/ollama-scripts/codex-local.sh'
 ofree() {
     OLLAMA_KIT_LOCAL=1 \
     OLLAMA_KIT_PROVIDER=ollama \
     OLLAMA_HOST= OLLAMA_API_KEY= NVIDIA_API_KEY= GEMINI_API_KEY= \
-        $HOME/ollama-cli.py "$@"
+        /ia-local/project/ollama-local-kit/ollama-cli.py "$@"
 }
 ocloud() {
     if [ ! -s "$HOME/.ollama-cloud-key" ]; then
@@ -27,7 +27,7 @@ ocloud() {
     fi
     OLLAMA_HOST=https://ollama.com \
     OLLAMA_API_KEY="$(cat "$HOME/.ollama-cloud-key")" \
-        $HOME/ollama-cli.py "$@"
+        /ia-local/project/ollama-local-kit/ollama-cli.py "$@"
 }
 onvidia() {
     if [ ! -s "$HOME/.nvidia-api-key" ]; then
@@ -37,7 +37,7 @@ onvidia() {
     OLLAMA_HOST= \
     OLLAMA_KIT_PROVIDER=nvidia \
     NVIDIA_API_KEY="$(cat "$HOME/.nvidia-api-key")" \
-        $HOME/ollama-cli.py "$@"
+        /ia-local/project/ollama-local-kit/ollama-cli.py "$@"
 }
 ogemini() {
     if [ ! -s "$HOME/.gemini-api-key" ]; then
@@ -47,7 +47,7 @@ ogemini() {
     OLLAMA_HOST= \
     OLLAMA_KIT_PROVIDER=gemini \
     GEMINI_API_KEY="$(cat "$HOME/.gemini-api-key")" \
-        $HOME/ollama-cli.py "$@"
+        /ia-local/project/ollama-local-kit/ollama-cli.py "$@"
 }
 # >>> ollama-cli completion >>>
 if [[ -r "$HOME/.local/share/bash-completion/completions/ollama-cli" ]]; then

@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-CLI = "/home/onion/ollama-cli.py"
+CLI = "/ia-local/project/ollama-local-kit/ollama-cli.py"
 
 for key in ("OLLAMA_KIT_PROVIDER", "OLLAMA_API_KEY", "NVIDIA_API_KEY",
             "GEMINI_API_KEY", "OLLAMA_HOST"):

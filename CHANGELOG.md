@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-25 (cuadragésima segunda tanda)
+
+- **Mudanza a la partición `/`:** los GGUF pasan de
+  `/home/onion/Documentos/ModelsIA` a `/ia-local/models` (18.870.928.912 bytes,
+  verificados con `diff -rq`) y el repo a
+  `/ia-local/project/ollama-local-kit`. `/home` pasa de 1,4 G libres a ~19 G.
+- Se reescribieron las rutas de 35 archivos: `ollama-cli.py`, Modelfiles, tests,
+  scripts, `ollama-commands.json`, docs, `.bashrc`, `.desktop` y autocompletado.
+  Ya no quedan referencias a las rutas antiguas.
+- Los 16 G de blobs de Ollama siguen en `/usr/share/ollama/.ollama/models`:
+  ya estaban en `/`, así que moverlos no liberaría espacio adicional.
+- Se borraron los originales de `/home` tras verificar la copia. 12/12 pruebas y
+  `SELFTEST OK` desde la nueva ubicación.
+
 ## 2026-11-23 (cuadragésima primera tanda)
 
 - **Aviso de Codex resuelto:** Codex `0.169.0` fuerza modo embebido y muestra
@@ -345,7 +359,7 @@
 ## 2026-11-22 (decimonovena tanda)
 
 - Añadido `config/Modelfile.nemotron3-gpu`: ruta canónica en
-  `~/Documentos/ModelsIA/`, `num_gpu 43`, `num_ctx 2048` y `temperature 0.3`,
+  `/ia-local/models/`, `num_gpu 43`, `num_ctx 2048` y `temperature 0.3`,
   igual que el modelo instalado. Documentado en `INSTALL.md`.
 - Ordenados los GGUF del equipo: `InstallApps/IALocal/` contenía copias de
   `gemma3:gpu` y `qwen:gpu` y el único GGUF suelto de Nemotron. Tras copiar y

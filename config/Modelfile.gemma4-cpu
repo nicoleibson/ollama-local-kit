@@ -1,5 +1,5 @@
 # Gemma 4 E4B Q2_K_P en CPU (no cabe en la iGPU Carrizo: 7,5 B / 4,2 GB)
-FROM /home/onion/Documentos/ModelsIA/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q2_K_P.gguf
+FROM /ia-local/models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q2_K_P.gguf
 PARAMETER temperature 0.3
 PARAMETER num_ctx 512
 PARAMETER num_gpu 0

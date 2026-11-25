@@ -19,7 +19,7 @@ _ollama_cli_files() {
 _ollama_cli_catalog() {
     python3 - <<'PY' 2>/dev/null
 import json, os
-p = os.environ.get("OLLAMA_COMMANDS", "/home/onion/ollama-commands.json")
+p = os.environ.get("OLLAMA_COMMANDS", "/ia-local/project/ollama-local-kit/ollama-commands.json")
 try:
     d = json.load(open(p))
     print("\n".join(k for k in d if not k.startswith("_")))

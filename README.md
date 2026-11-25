@@ -7,6 +7,10 @@ ventana Tkinter (`ogui`) para ver, ejecutar y chatear sin servidor ni navegador.
 
 > Probado el 22/11/2026 con Ollama 0.33.2 + Vulkan (RADV). Documentación completa en
 > [`ollama-kit.md`](ollama-kit.md).
+>
+> Ubicación actual: repo en `/ia-local/project/ollama-local-kit` y GGUF en
+> `/ia-local/models` (partición `/`). Los blobs de Ollama siguen en
+> `/usr/share/ollama/.ollama/models`.
 
 ## Equipo y decisiones clave
 
@@ -118,7 +122,7 @@ onvidia chat "resume esto"                    # Nemotron 3.5 Lightning por defec
 onvidia chat -m nvidia/nemotron-3-ultra-550b-a55b "revisa este diff"
 ogemini chat -m gemini-4-hydrogen "explica esto"
 oagent --prompt "resume este repo"             # tarea única, sin REPL
-oagent --root ~/ollama-local-kit --session trabajo
+oagent --root /ia-local/project/ollama-local-kit --session trabajo
 oagent --reasoning --prompt "analiza este diff"  # respaldo Nemotron
 ochat --precise "analiza este diff"         # máxima precisión: nemotron3:precise
 orag ask "¿qué dice el contrato?" --precise  # RAG exhaustivo y citado
@@ -187,7 +191,7 @@ Funciones principales de `ollama-cli.py`:
 `--start` para continuar) y fuerza JSON Schema según la acción. `--dry-run` muestra
 el prompt exacto sin consumir tokens. Para buscar en un repo, `orag index DIRECTORIO`
 y `orag ask "..."`; para ejecutar comprobaciones, `oact "run_tests"` o
-`bash ~/ollama-scripts/selftest.sh`.
+`bash /ia-local/project/ollama-local-kit/ollama-scripts/selftest.sh`.
 
 Los comandos de `act` muestran `[->]`, duración y `[OK]`/`[X] exit N`. Todo queda en
 `~/.ollama-debug.log`: `odebug` resume, `odebug --full` muestra tracebacks y
@@ -253,11 +257,11 @@ GUI (12 pestañas), proveedores, defaults, perfil de tareas y perfil de precisi�
 (incluido el presupuesto anti-truncado de RAG), GUI y reintento de JSON Schema.
 
 ```bash
-for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
-bash ~/ollama-scripts/selftest.sh        # sintaxis, catálogo, RAG, doctor y tests
+for f in /ia-local/project/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
+bash /ia-local/project/ollama-local-kit/ollama-scripts/selftest.sh        # sintaxis, catálogo, RAG, doctor y tests
 ```
 
-`selftest.sh` busca las pruebas en `~/ollama-local-kit/tests`; con
+`selftest.sh` busca las pruebas en `/ia-local/project/ollama-local-kit/tests`; con
 `OLLAMA_KIT_TESTS` se puede apuntar a otra copia. Termina con `SELFTEST OK`.
 
 ## Flujos con contexto corto

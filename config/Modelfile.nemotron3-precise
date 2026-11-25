@@ -1,6 +1,6 @@
 # Perfil de máxima precisión: Nemotron-H 4B con contexto amplio y salida determinista.
 # Se activa con `ocli ... --precise` o `OLLAMA_KIT_PRECISE=1`.
-FROM /home/onion/Documentos/ModelsIA/Nemotron3-Nano-4B-Uncensored-HauhauCS-Aggressive-IQ2_M.gguf
+FROM /ia-local/models/Nemotron3-Nano-4B-Uncensored-HauhauCS-Aggressive-IQ2_M.gguf
 TEMPLATE {{ .Prompt }}
 RENDERER nemotron-3-nano
 PARSER nemotron-3-nano

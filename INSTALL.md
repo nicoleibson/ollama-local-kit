@@ -4,6 +4,9 @@ Los archivos de `config/` son **copias de referencia**: no se aplican automátic
 Ejecuta estos pasos desde la raíz del repositorio. No se usa `systemctl edit ollama`;
 todo se escribe con `cp`/`tee` directos.
 
+Ubicación canónica: `/ia-local/project/ollama-local-kit` (repo) y `/ia-local/models`
+(GGUF fuente de los Modelfiles). En `/home/onion` solo quedan los dotfiles.
+
 ## 1. Requisitos
 
 - Linux con systemd, bash y Python 3.
@@ -14,11 +17,10 @@ todo se escribe con `cp`/`tee` directos.
 ## 2. Herramientas en casa del usuario
 
 ```bash
-mkdir -p ~/ollama-scripts ~/.local/share/bash-completion/completions
-cp ollama-cli.py ollama-bench.sh ollama-act.py ollama-commands.json ollama-kit.md ~/
-cp ollama-kit-gui.py ~/
-cp ollama-scripts/*.sh ~/ollama-scripts/
-chmod +x ~/ollama-cli.py ~/ollama-kit-gui.py ~/ollama-bench.sh ~/ollama-act.py ~/ollama-scripts/*.sh
+mkdir -p ~/.local/share/bash-completion/completions
+chmod +x /ia-local/project/ollama-local-kit/ollama-cli.py \
+         /ia-local/project/ollama-local-kit/ollama-kit-gui.py \
+         /ia-local/project/ollama-local-kit/ollama-scripts/*.sh
 cp completions/ollama-cli ~/.local/share/bash-completion/completions/ollama-cli
 ```
 
@@ -125,7 +127,7 @@ ocli import nemotron3:gpu /ruta/nemotron...gguf
 ```
 
 `config/Modelfile.nemotron3-gpu` es la receta canónica para el respaldo de
-razonamiento: apunta al GGUF de `~/Documentos/ModelsIA/` y fija `num_gpu 43`,
+razonamiento: apunta al GGUF de `/ia-local/models/` y fija `num_gpu 43`,
 `num_ctx 2048` y `temperature 0.3`, igual que el modelo instalado. Permite
 recrearlo sin depender del directorio de importación original.
 
@@ -189,7 +191,7 @@ puerto 11435 con esa variable, ejecuta la petición y apaga el proceso al termin
 ```bash
 # Ajusta la ruta FROM en config/Modelfile.gemma4-dgpu si hace falta
 ollama create gemma4:dgpu -f config/Modelfile.gemma4-dgpu
-chmod +x ollama-scripts/gemma4-dgpu.sh     # o copiarlo a ~/ollama-scripts/
+chmod +x ollama-scripts/gemma4-dgpu.sh     # o copiarlo a /ia-local/project/ollama-local-kit/ollama-scripts/
 odgpu "tu pregunta"
 odgpu --chat
 odgpu --bench
@@ -243,7 +245,7 @@ ocli doctor
 ocli list
 ocli bench gemma3:q4 gemma3:gpu nemotron3:gpu
 ocli act --list
-ocli rag index ~/ollama-kit.md
+ocli rag index /ia-local/project/ollama-local-kit/ollama-kit.md
 ocli rag ask "cómo funciona el modo act" -k 3
 ocli watch --count 3 --interval 1
 ocli chat --session prueba --no-stream "di HOLA"
@@ -251,9 +253,9 @@ ocli session list
 ocli prompt add resumen --text 'Resume: {{args}}'
 ocli prompt use resumen "texto de prueba" --no-stream
 ocli bench --history
-ocli code review ~/ollama-cli.py --lines 20 --dry-run
+ocli code review /ia-local/project/ollama-local-kit/ollama-cli.py --lines 20 --dry-run
 ocode tests "def suma(a,b): return a+b" --no-stream
-bash ~/ollama-scripts/selftest.sh             # debe terminar con SELFTEST OK
+bash /ia-local/project/ollama-local-kit/ollama-scripts/selftest.sh             # debe terminar con SELFTEST OK
 odebug -n 5
 ocli config                                   # MODO: LOCAL, PERFIL: TAREAS, razonamiento visible
 oagent --help                                 # debe mostrar --prompt y --reasoning
@@ -263,10 +265,10 @@ OLLAMA_KIT_PRECISE=1 ocli config               # debe mostrar PERFIL DE PRECISI�
 ocli chat --precise --no-stream "di HOLA"      # nemotron3:precise (lento), razonamiento visible
 ofree config                                  # debe decir GRATIS: solo modelos locales
 oflow --help                                  # debe mostrar map/slide/classify/ask
-python3 -m py_compile ~/ollama-kit-gui.py      # sintaxis de la ventana Tkinter
+python3 -m py_compile /ia-local/project/ollama-local-kit/ollama-kit-gui.py      # sintaxis de la ventana Tkinter
 ogui                                          # 12 pestañas; marca "Máxima precisión": el estado dice "perfil preciso"
                                               # revisa RAG, Agente y Acciones sin ejecutar nada
-for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
+for f in /ia-local/project/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
 ofree flow map /home/onion/ollama-kit.md --prompt 'Resume' --out prueba --limit 1
 cat ~/.ollama-flow/prueba/report.md           # estado en disco, reanudable
 OLLAMA_KIT_PROVIDER=nvidia ollama-cli.py config | grep 'Modelo por defecto'  # opcional
@@ -298,8 +300,8 @@ ogemini config                                # PROVEEDOR: gemini
 "ningún modelo cargado" cuando no hay ninguna inferencia en curso.
 
 `selftest.sh` comprueba sintaxis, catálogo, índice RAG, `doctor` y las diez
-pruebas de `~/ollama-local-kit/tests/` (sin inferencias). Si el repo está en otra
-ruta, indícala con `OLLAMA_KIT_TESTS=/ruta/tests bash ~/ollama-scripts/selftest.sh`.
+pruebas de `/ia-local/project/ollama-local-kit/tests/` (sin inferencias). Si el repo está en otra
+ruta, indícala con `OLLAMA_KIT_TESTS=/ruta/tests bash /ia-local/project/ollama-local-kit/ollama-scripts/selftest.sh`.
 
 Los datos generados por el usuario (sesiones, plantillas e historial) se guardan en
 `~/.ollama-sessions/`, `~/.ollama-prompts.json` y `~/.ollama-bench-history.jsonl`.
@@ -315,9 +317,8 @@ sudo rm -f /etc/sysctl.d/99-ollama.conf
 sudo systemctl daemon-reload
 sudo systemctl restart ollama
 
-rm -f ~/ollama-cli.py ~/ollama-bench.sh ~/ollama-act.py \
-      ~/ollama-commands.json ~/ollama-kit.md
-rm -rf ~/ollama-scripts ~/.ollama-rag ~/.ollama-sessions ~/.ollama-agent-undo
+sudo rm -rf /ia-local        # repo y GGUF; submitrá contraseña si no es root
+rm -rf ~/.ollama-rag ~/.ollama-sessions ~/.ollama-agent-undo
 rm -f ~/.ollama-prompts.json ~/.ollama-bench-history.jsonl ~/.ollama-debug.log
 rm -f ~/.ollama-cloud-key ~/.nvidia-api-key ~/.gemini-api-key
 ```

@@ -14,11 +14,11 @@ set -euo pipefail
 PORT=11435
 HOST="http://127.0.0.1:$PORT"
 MODEL="gemma4:dgpu"
-CLI="/home/onion/ollama-cli.py"
+CLI="/ia-local/project/ollama-local-kit/ollama-cli.py"
 LOG="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.log"
 PIDFILE="${TMPDIR:-/tmp}/ollama-gemma4-dgpu.pid"
 SAFE_MODEL="gemma4:dgpu-safe"
-SAFE_MODELFILE="/home/onion/ollama-local-kit/config/Modelfile.gemma4-dgpu-safe"
+SAFE_MODELFILE="/ia-local/project/ollama-local-kit/config/Modelfile.gemma4-dgpu-safe"
 SAFE_FIT=0
 CTX=2048
 
@@ -71,7 +71,7 @@ if ! grep -q "$MODEL" <<<"$MAIN_TAGS"; then
         ollama create "$MODEL" -f "$SAFE_MODELFILE" >&2
     else
         echo "ERROR: falta el tag $MODEL. Créalo con:" >&2
-        echo "  ollama create $MODEL -f ~/ollama-local-kit/config/Modelfile.gemma4-dgpu" >&2
+        echo "  ollama create $MODEL -f /ia-local/project/ollama-local-kit/config/Modelfile.gemma4-dgpu" >&2
         exit 1
     fi
 fi

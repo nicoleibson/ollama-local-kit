@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-CLI = "/home/onion/ollama-cli.py"
+CLI = "/ia-local/project/ollama-local-kit/ollama-cli.py"
 
 
 class FakeResponse:

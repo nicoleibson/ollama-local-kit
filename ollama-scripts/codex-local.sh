@@ -19,7 +19,7 @@ case "$MODEL" in
         ;;
 esac
 if ! ollama show "$MODEL" >/dev/null 2>&1; then
-    echo "ERROR: falta el tag $MODEL. Créalo desde ~/ollama-local-kit/config/Modelfile.${MODEL/:/-}" >&2
+    echo "ERROR: falta el tag $MODEL. Créalo desde /ia-local/project/ollama-local-kit/config/Modelfile.${MODEL/:/-}" >&2
     exit 1
 fi
 

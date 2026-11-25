@@ -5,7 +5,7 @@ import sys
 import shutil
 from pathlib import Path
 
-SRC = Path('/home/onion/Documentos/ModelsIA/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf')
+SRC = Path('/ia-local/models/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf')
 FMTS = {0: '<B', 1: '<b', 2: '<H', 3: '<h', 4: '<I', 5: '<i', 6: '<f', 7: '<b', 10: '<Q', 11: '<q', 12: '<d'}
 
 

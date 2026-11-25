@@ -1,5 +1,5 @@
 # Gemma-3-1B-it Q4_K_M para iGPU Carrizo (4.4 GiB compartidos)
-FROM /home/onion/Documentos/ModelsIA/Gemma-3-1B-it-GLM-4.7-Flash-Heretic-Uncensored-Thinking_Q4_k_m.gguf
+FROM /ia-local/models/Gemma-3-1B-it-GLM-4.7-Flash-Heretic-Uncensored-Thinking_Q4_k_m.gguf
 PARAMETER temperature 0.3
 PARAMETER num_ctx 2048
 PARAMETER num_gpu 27

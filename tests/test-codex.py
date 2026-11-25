@@ -6,7 +6,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "ollama-scripts" / "codex-local.sh"
-INSTALLED = Path("/home/onion/ollama-scripts/codex-local.sh")
+INSTALLED = Path("/ia-local/project/ollama-local-kit/ollama-scripts/codex-local.sh")
 MODELFILE = REPO / "config" / "Modelfile.nemotron3-codex"
 CODEX_DIR = Path.home() / ".codex"
 PROFILE = CODEX_DIR / "ollama-launch.config.toml"

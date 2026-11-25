@@ -101,95 +101,95 @@
     "desc": "gobernador de frecuencia de la CPU"
   },
   "sys_info": {
-    "script": "/home/onion/ollama-scripts/sys-info.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/sys-info.sh",
     "desc": "informe completo del sistema: OS, CPU, RAM, GPU y arranque"
   },
   "cpu_info": {
-    "script": "/home/onion/ollama-scripts/cpu-info.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/cpu-info.sh",
     "desc": "informe detallado de la CPU, gobernador y frecuencias"
   },
   "mem_info": {
-    "script": "/home/onion/ollama-scripts/mem-info.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/mem-info.sh",
     "desc": "informe de memoria RAM, swap y procesos que más memoria usan"
   },
   "disk_info": {
-    "script": "/home/onion/ollama-scripts/disk-info.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/disk-info.sh",
     "desc": "informe de discos, particiones, inodos y carpetas grandes"
   },
   "gpu_info": {
-    "script": "/home/onion/ollama-scripts/gpu-info.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/gpu-info.sh",
     "desc": "informe de GPUs, Vulkan y sensores de temperatura"
   },
   "net_info": {
-    "script": "/home/onion/ollama-scripts/net-info.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/net-info.sh",
     "desc": "informe de red: interfaces, rutas y puertos abiertos"
   },
   "proc_info": {
-    "script": "/home/onion/ollama-scripts/proc-info.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/proc-info.sh",
     "desc": "informe de los procesos que más CPU consumen"
   },
   "logs_tail": {
-    "script": "/home/onion/ollama-scripts/logs-tail.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/logs-tail.sh",
     "desc": "últimos 50 mensajes del sistema"
   },
   "ollama_report": {
-    "script": "/home/onion/ollama-scripts/ollama-status.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/ollama-status.sh",
     "desc": "informe completo de Ollama: servicio, modelos y GPU detectada"
   },
   "ollama_bench": {
-    "script": "/home/onion/ollama-scripts/ollama-bench.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/ollama-bench.sh",
     "desc": "medir tokens por segundo de los modelos instalados"
   },
   "ollama_doctor": {
-    "script": "/home/onion/ollama-scripts/ollama-doctor.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/ollama-doctor.sh",
     "desc": "comprobar que toda la configuración esté correcta"
   },
   "ollama_models": {
-    "script": "/home/onion/ollama-scripts/ollama-models.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/ollama-models.sh",
     "desc": "listar modelos con su uso recomendado"
   },
   "ollama_stop_all": {
-    "script": "/home/onion/ollama-scripts/ollama-stop-all.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/ollama-stop-all.sh",
     "desc": "descargar todos los modelos cargados para liberar memoria"
   },
   "backup_configs": {
-    "script": "/home/onion/ollama-scripts/backup-configs.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/backup-configs.sh",
     "desc": "hacer una copia con fecha de la configuración y los scripts"
   },
   "big_files": {
-    "script": "/home/onion/ollama-scripts/big-files.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/big-files.sh",
     "desc": "encontrar archivos mayores de 100 MB en /home/onion"
   },
   "systemd_failed": {
-    "script": "/home/onion/ollama-scripts/systemd-failed.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/systemd-failed.sh",
     "desc": "mostrar unidades de systemd que han fallado"
   },
   "py_compile": {
-    "cmd": "python3 -m py_compile /home/onion/ollama-cli.py",
+    "cmd": "python3 -m py_compile /ia-local/project/ollama-local-kit/ollama-cli.py",
     "desc": "comprobar sintaxis de la CLI Python"
   },
   "shell_check": {
-    "cmd": "bash -n /home/onion/ollama-scripts/*.sh",
+    "cmd": "bash -n /ia-local/project/ollama-local-kit/ollama-scripts/*.sh",
     "desc": "comprobar sintaxis de todos los scripts bash"
   },
   "json_check": {
-    "cmd": "python3 -m json.tool /home/onion/ollama-commands.json > /dev/null && echo JSON_OK",
+    "cmd": "python3 -m json.tool /ia-local/project/ollama-local-kit/ollama-commands.json > /dev/null && echo JSON_OK",
     "desc": "validar el catálogo de comandos"
   },
   "run_tests": {
-    "script": "/home/onion/ollama-scripts/selftest.sh",
+    "script": "/ia-local/project/ollama-local-kit/ollama-scripts/selftest.sh",
     "desc": "ejecutar comprobaciones del kit: sintaxis, JSON, RAG y doctor"
   },
   "git_status": {
-    "cmd": "git -C /home/onion/ollama-local-kit status --short",
+    "cmd": "git -C /ia-local/project/ollama-local-kit status --short",
     "desc": "cambios pendientes en el repositorio del kit"
   },
   "git_diff": {
-    "cmd": "git -C /home/onion/ollama-local-kit diff --stat",
+    "cmd": "git -C /ia-local/project/ollama-local-kit diff --stat",
     "desc": "resumen de cambios sin confirmar en el repo"
   },
   "git_log": {
-    "cmd": "git -C /home/onion/ollama-local-kit log --oneline -5",
+    "cmd": "git -C /ia-local/project/ollama-local-kit log --oneline -5",
     "desc": "últimos 5 commits del repositorio"
   },
   "kit_doctor": {
@@ -209,7 +209,7 @@
     "desc": "últimos errores y eventos registrados por la CLI"
   },
   "review_cli": {
-    "cmd": "ocli code review /home/onion/ollama-cli.py --no-stream",
+    "cmd": "ocli code review /ia-local/project/ollama-local-kit/ollama-cli.py --no-stream",
     "desc": "revisar la CLI con el modelo de razonamiento"
   }
 }

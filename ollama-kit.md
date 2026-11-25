@@ -28,7 +28,7 @@ ollama ps                                 # comprobar que dice 100% GPU
 ollama stop gemma3:q4                     # liberar memoria al terminar
 ```
 
-## 0. CLI personal (`~/ollama-cli.py`)
+## 0. CLI personal (`/ia-local/project/ollama-local-kit/ollama-cli.py`)
 
 Todo lo anterior se puede hacer con una sola herramienta. Está instalada y probada:
 
@@ -103,7 +103,7 @@ Ollama no ejecuta un `.gguf` directamente: se importa una vez con `ollama create
 después se usa un tag. Al importar, los pesos se copian a
 `/usr/share/ollama/.ollama/models` (el archivo original queda como respaldo).
 
-| GGUF en `/home/onion/Documentos/ModelsIA/` | Tag | Uso |
+| GGUF en `/ia-local/models/` | Tag | Uso |
 |---|---|---|
 | `Gemma-...-Q6_k.gguf` (965 M) | **`gemma3:gpu`**, `gemma3:latest` | **Principal**, 7,8 tok/s |
 | `Gemma-...-Q4_k_m.gguf` (769 M) | `gemma3:q4` | Alternativa rápida, 9,3 tok/s |
@@ -344,7 +344,7 @@ ocli act --dry-run "cuánto espacio libre queda"   # elige df -> df -h
 ocli act "dime la temperatura de la gpu"          # elige temp -> sensors | grep ...
 ```
 
-Edita `/home/onion/ollama-commands.json` para añadir o quitar comandos:
+Edita `/ia-local/project/ollama-local-kit/ollama-commands.json` para añadir o quitar comandos:
 
 ```json
 "mi_comando": {"cmd": "comando real --opcion", "desc": "cuándo elegirlo"}
@@ -399,10 +399,10 @@ curl -s http://127.0.0.1:11434/api/chat -d '{
 }'
 ```
 
-### Catálogo ampliado y scripts (~/ollama-scripts)
+### Catálogo ampliado y scripts (/ia-local/project/ollama-local-kit/ollama-scripts)
 
 El catálogo tiene **41 entradas**: 25 comandos inline y 16 scripts en
-`/home/onion/ollama-scripts/`. El modelo elige solo el identificador y la CLI
+`/ia-local/project/ollama-local-kit/ollama-scripts/`. El modelo elige solo el identificador y la CLI
 ejecuta el script asociado con `bash`.
 
 | Identificador | Script | Para qué |
@@ -427,7 +427,7 @@ ejecuta el script asociado con `bash`.
 Para añadir uno nuevo: crea el script y agrega al JSON:
 
 ```json
-"mi_reporte": {"script": "/home/onion/ollama-scripts/mi-reporte.sh", "desc": "cuándo elegirlo"}
+"mi_reporte": {"script": "/ia-local/project/ollama-local-kit/ollama-scripts/mi-reporte.sh", "desc": "cuándo elegirlo"}
 ```
 
 Ejemplos ya probados:
@@ -450,7 +450,7 @@ El índice vive en `/home/onion/.ollama-rag/index.json`.
 
 ```bash
 orag index /home/onion/ollama-kit.md              # un archivo
-orag index /home/onion/ollama-scripts             # directorio (recursivo)
+orag index /ia-local/project/ollama-local-kit/ollama-scripts             # directorio (recursivo)
 orag index manual.md scripts/ --max-files 50      # limitar cuántos archivos
 orag list                                         # ver archivos y fragmentos
 orag ask "cómo funciona el modo act" -k 3
@@ -663,12 +663,12 @@ anteriores corresponden a sus configuraciones respectivas.
 para no desbordar los 2048 tokens y fuerza un JSON Schema por acción:
 
 ```bash
-ocode review ~/ollama-cli.py --lines 80 --stats
-ocode review ~/ollama-cli.py --start 81 --lines 80   # siguiente trozo
+ocode review /ia-local/project/ollama-local-kit/ollama-cli.py --lines 80 --stats
+ocode review /ia-local/project/ollama-local-kit/ollama-cli.py --start 81 --lines 80   # siguiente trozo
 ocode tests modulo.py
 ocode explain "def suma(a, b): return a + b"
 echo 'def f(x): return x*2' | ocli code review --stdin
-ocode commit /home/onion/ollama-local-kit
+ocode commit /ia-local/project/ollama-local-kit
 ocode review archivo.py --dry-run      # ver system, prompt y schema sin llamar al modelo
 ```
 
@@ -690,7 +690,7 @@ la CLI avisa de que puede desbordar el contexto.
 `.git`, `__pycache__` y `node_modules`:
 
 ```bash
-orag index /home/onion/ollama-local-kit
+orag index /ia-local/project/ollama-local-kit
 orag ask "¿dónde se guardan las sesiones de chat?" -k 4
 orag ask "cómo funciona el modo act" -m gemma3:gpu -k 3
 ```
@@ -704,7 +704,7 @@ El catálogo tiene 53 entradas. Las nuevas para programar son `py_compile`,
 ```bash
 oact "comprueba la sintaxis de los scripts" --dry-run
 oact "cambios pendientes en el repo"
-bash ~/ollama-scripts/selftest.sh     # 5 pasos, sin dependencias nuevas
+bash /ia-local/project/ollama-local-kit/ollama-scripts/selftest.sh     # 5 pasos, sin dependencias nuevas
 ```
 
 `selftest.sh` valida sintaxis Python y bash, el JSON del catálogo, el índice RAG y
@@ -737,13 +737,13 @@ arranca con `gemma3:gpu` local y usa `format` + JSON Schema (no tool calling
 nativo), que es lo que mejor funciona con los modelos pequeños de este kit:
 
 ```bash
-cd ~/ollama-local-kit
+cd /ia-local/project/ollama-local-kit
 oagent                                         # REPL, raíz = directorio actual
 oagent --prompt "resume este repo"             # una sola tarea y salir
 oagent --reasoning --prompt "analiza este diff"  # respaldo nemotron3:gpu
-oagent --root ~/ollama-local-kit --session trabajo
+oagent --root /ia-local/project/ollama-local-kit --session trabajo
 oagent -m nemotron3:gpu --steps 6              # recomendado para el bucle
-ogemini agent --root ~/ollama-local-kit        # Gemini también admite schema
+ogemini agent --root /ia-local/project/ollama-local-kit        # Gemini también admite schema
 ```
 
 El bucle funciona así: escribes una petición, el modelo devuelve **solo un
@@ -1007,7 +1007,7 @@ hardware sí es ilimitado y gratuito. Para no depender de créditos, el kit tien
 ```bash
 ofree config                                  # GRATIS: ignora keys y HOST remoto
 ofree chat -m glm-5.3-flash "hola"            # usa nemotron3:gpu en local
-ofree agent --root ~/ollama-local-kit         # agente local, sin créditos
+ofree agent --root /ia-local/project/ollama-local-kit         # agente local, sin créditos
 ```
 
 `ofree` fuerza `OLLAMA_KIT_LOCAL=1`, borra las variables de key y traduce los
@@ -1221,18 +1221,18 @@ En `ask`: `--path` (obligatorio), `--embed-model`, `-k` (3) y `--context-chars`
 ## 14. Importar otro GGUF (plantilla)
 
 ```bash
-cat > /home/onion/Documentos/ModelsIA/Modelfile.NOMBRE <<'EOF'
-FROM /home/onion/Documentos/ModelsIA/ARCHIVO.gguf
+cat > /ia-local/models/Modelfile.NOMBRE <<'EOF'
+FROM /ia-local/models/ARCHIVO.gguf
 PARAMETER temperature 0.3
 PARAMETER num_ctx 2048
 PARAMETER num_gpu 27
 PARAMETER stop <end_of_turn>
 EOF
-ollama create NOMBRE -f /home/onion/Documentos/ModelsIA/Modelfile.NOMBRE
+ollama create NOMBRE -f /ia-local/models/Modelfile.NOMBRE
 ollama show NOMBRE
 ```
 
-`/home/onion/Documentos/ModelsIA/Modelfile.gemma-tools-fixed` activa la capability
+`/ia-local/models/Modelfile.gemma-tools-fixed` activa la capability
 `tools` con un bloque `{{ .Tools }}`, pero **no produce tool_calls útiles**: se dejó
 como experimento documentado, no como modelo de uso diario.
 
@@ -1465,8 +1465,8 @@ sigue aceptándose por compatibilidad, pero ya no desactiva nada.
 Comprobación local, sin créditos ni API keys:
 
 ```bash
-python3 ~/ollama-cli.py show gemma3:gpu     # Capabilities: completion
-python3 ~/ollama-cli.py show nemotron3:gpu  # Capabilities: completion, tools, thinking
+python3 /ia-local/project/ollama-local-kit/ollama-cli.py show gemma3:gpu     # Capabilities: completion
+python3 /ia-local/project/ollama-local-kit/ollama-cli.py show nemotron3:gpu  # Capabilities: completion, tools, thinking
 ```
 
 ### Pruebas versionadas
@@ -1490,13 +1490,13 @@ variables de entorno aisladas.
 | `test-schema.py` | validación de esquemas, recorte del prompt y reintento en `act` y flujos |
 
 ```bash
-for f in ~/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
-bash ~/ollama-scripts/selftest.sh
+for f in /ia-local/project/ollama-local-kit/tests/test-*.py; do python3 "$f"; done
+bash /ia-local/project/ollama-local-kit/ollama-scripts/selftest.sh
 # [1/6] sintaxis CLI · [2/6] scripts · [3/6] catálogo · [4/6] índice RAG
 # [5/6] doctor · [6/6] pruebas versionadas → SELFTEST OK
 ```
 
-`selftest.sh` lee las pruebas desde `~/ollama-local-kit/tests` por defecto;
+`selftest.sh` lee las pruebas desde `/ia-local/project/ollama-local-kit/tests` por defecto;
 `OLLAMA_KIT_TESTS=/otra/ruta/tests` permite cambiar la ubicación sin copiar los
 archivos al directorio de scripts. La revisión visual de `ogui` no pudo hacerse
 en este entorno porque las tres vías de captura disponibles (`import`,
@@ -1515,7 +1515,7 @@ con apuntar al modelo habitual.
 **Solución del kit:** un tag exclusivo para Codex y un wrapper.
 
 ```bash
-ollama create nemotron3:codex -f ~/ollama-local-kit/config/Modelfile.nemotron3-codex
+ollama create nemotron3:codex -f /ia-local/project/ollama-local-kit/config/Modelfile.nemotron3-codex
 ocodex --config                       # regenera perfil, lo fusiona y no lanza Codex
 ocodex                                # abre Codex con el proveedor Ollama en config.toml
 ocodex --exec "Responde exactamente HOLA"   # prueba no interactiva, sandbox read-only
@@ -1523,7 +1523,7 @@ ocodex --exec "Responde exactamente HOLA"   # prueba no interactiva, sandbox rea
 
 `Modelfile.nemotron3-codex` parte de `nemotron3:gpu` (4B, `completion`, `tools`
 y `thinking`) y solo cambia `num_ctx` a **65536** y temperatura 0. El wrapper
-`~/ollama-scripts/codex-local.sh` hace tres cosas:
+`/ia-local/project/ollama-local-kit/ollama-scripts/codex-local.sh` hace tres cosas:
 
 1. llama a `ollama launch codex --model nemotron3:codex --config -y` para
    generar/actualizar el perfil (`base_url = http://127.0.0.1:11434/v1/`);

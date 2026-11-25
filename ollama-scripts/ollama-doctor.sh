@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 # Comprueba que toda la configuración siga activa.
-exec /home/onion/ollama-cli.py doctor
+exec /ia-local/project/ollama-local-kit/ollama-cli.py doctor

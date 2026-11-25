@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 # Lista los modelos con su uso recomendado.
-exec /home/onion/ollama-cli.py list
+exec /ia-local/project/ollama-local-kit/ollama-cli.py list

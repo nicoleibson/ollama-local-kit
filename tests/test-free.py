@@ -2,7 +2,7 @@ import importlib.util
 import os
 import sys
 
-CLI = "/home/onion/ollama-cli.py"
+CLI = "/ia-local/project/ollama-local-kit/ollama-cli.py"
 
 # Simula un entorno "cloud" con key y host remoto; el modo gratuito debe ignorarlos.
 os.environ.update({

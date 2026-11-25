@@ -411,7 +411,7 @@ def openai_response(path, data, started):
         return {"models": []}
     return data
 OVERRIDE = Path("/etc/systemd/system/ollama.service.d/override.conf")
-MODELS_DIR = Path("/home/onion/Documentos/ModelsIA")
+MODELS_DIR = Path("/ia-local/models")
 SESSIONS_DIR = Path.home() / ".ollama-sessions"
 PROMPTS_PATH = Path.home() / ".ollama-prompts.json"
 BENCH_HISTORY = Path.home() / ".ollama-bench-history.jsonl"
@@ -454,7 +454,7 @@ DEFAULT_CATALOG = {
     "ls": {"cmd": "ls -la", "desc": "listar archivos"},
 }
 CATALOG_PATH = Path(
-    os.environ.get("OLLAMA_COMMANDS", "/home/onion/ollama-commands.json")
+    os.environ.get("OLLAMA_COMMANDS", "/ia-local/project/ollama-local-kit/ollama-commands.json")
 )
 
 RAG_DIR = Path(os.environ.get("OLLAMA_RAG_DIR", "/home/onion/.ollama-rag"))
@@ -3493,18 +3493,18 @@ def build_parser():
   ollama-cli.py prompt add resumen --text 'Resume {{args}}'
   ollama-cli.py prompt use resumen "este texto largo"
   ollama-cli.py bench --history
-  ollama-cli.py code review ~/ollama-cli.py --dry-run
+  ollama-cli.py code review /ia-local/project/ollama-local-kit/ollama-cli.py --dry-run
   ollama-cli.py code tests modulo.py
   ollama-cli.py code commit
   ollama-cli.py agent                          # REPL con herramientas y permisos
-  ollama-cli.py agent --root ~/ollama-local-kit --session trabajo
+  ollama-cli.py agent --root /ia-local/project/ollama-local-kit --session trabajo
   ollama-cli.py flow map informe.md --prompt "Resume en 3 viñetas" --out informe
   ollama-cli.py flow slide novela.txt --prompt "Continúa el resumen" --carry 300
   ollama-cli.py flow classify contrato.md --labels rescision,confidencialidad
   ollama-cli.py flow ask --path contrato.md "¿hay cláusula de rescisión?" -k 3
   ollama-cli.py --debug act "muestra la fecha"
   ollama-cli.py debug --full
-  ollama-cli.py import gemma3:q2 /home/onion/Documentos/ModelsIA/Gemma-...-Q2_k.gguf
+  ollama-cli.py import gemma3:q2 /ia-local/models/Gemma-...-Q2_k.gguf
 """,
     )
     p.add_argument("--debug", action="store_true",
@@ -3910,7 +3910,7 @@ def cmd_code(args):
     chunks = []
 
     if args.action == "commit":
-        repo = args.paths[0] if args.paths else "/home/onion/ollama-local-kit"
+        repo = args.paths[0] if args.paths else "/ia-local/project/ollama-local-kit"
         target = shlex.quote(str(Path(repo).expanduser()))
         diff = sh(f"git -C {target} diff --unified=1", timeout=30)
         stat = sh(f"git -C {target} diff --stat", timeout=30)
@@ -3941,7 +3941,7 @@ def cmd_code(args):
         if not chunks:
             raise SystemExit(
                 "Indica un archivo, texto entre comillas o --stdin. "
-                "Ej: ocli code review ~/ollama-cli.py"
+                "Ej: ocli code review /ia-local/project/ollama-local-kit/ollama-cli.py"
             )
 
     code = "\n\n".join(f"--- {label} ---\n{text}" for label, text in chunks)

@@ -2,20 +2,20 @@
 # Comprobaciones rápidas del kit: sintaxis, catálogo, índice RAG, doctor y pruebas.
 set -u
 fail=0
-TESTS="${OLLAMA_KIT_TESTS:-/home/onion/ollama-local-kit/tests}"
+TESTS="${OLLAMA_KIT_TESTS:-/ia-local/project/ollama-local-kit/tests}"
 
 step() { printf '[%s] %s\n' "$1" "$2"; }
 
 step 1/6 'Sintaxis de ollama-cli.py'
-python3 -m py_compile /home/onion/ollama-cli.py || fail=1
+python3 -m py_compile /ia-local/project/ollama-local-kit/ollama-cli.py || fail=1
 
 step 2/6 'Sintaxis de los scripts'
-for f in /home/onion/ollama-scripts/*.sh; do
+for f in /ia-local/project/ollama-local-kit/ollama-scripts/*.sh; do
     bash -n "$f" || fail=1
 done
 
 step 3/6 'Catálogo JSON'
-python3 -m json.tool /home/onion/ollama-commands.json >/dev/null || fail=1
+python3 -m json.tool /ia-local/project/ollama-local-kit/ollama-commands.json >/dev/null || fail=1
 
 step 4/6 'Índice RAG'
 python3 - <<'PY' || fail=1
@@ -26,7 +26,7 @@ print('%d fragmentos, embedding %s' % (len(d.get('chunks', [])), d.get('embeddin
 PY
 
 step 5/6 'Doctor'
-/home/onion/ollama-cli.py doctor | tail -1
+/ia-local/project/ollama-local-kit/ollama-cli.py doctor | tail -1
 
 step 6/6 'Pruebas versionadas'
 if [ -d "$TESTS" ]; then

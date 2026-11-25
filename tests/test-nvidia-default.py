@@ -4,7 +4,7 @@ import contextlib
 import os
 import sys
 
-CLI = "/home/onion/ollama-cli.py"
+CLI = "/ia-local/project/ollama-local-kit/ollama-cli.py"
 
 BASE_ENV = ("OLLAMA_KIT_PROVIDER", "OLLAMA_KIT_LOCAL", "OLLAMA_API_KEY",
             "NVIDIA_API_KEY", "GEMINI_API_KEY", "OLLAMA_HOST")
